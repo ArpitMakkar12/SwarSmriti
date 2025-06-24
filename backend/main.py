@@ -15,11 +15,15 @@ app = FastAPI()
 # ✅ Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://swar-smriti-frontend.onrender.com", "http://localhost:5173"],
+    allow_origins=[
+        "https://swarsmriti-1.onrender.com",  # ✅ your deployed frontend
+        "http://localhost:5173"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 # Include your routers:
