@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
-from backend.routes.vosk_transcriber import transcribe_from_path
+from routes.vosk_transcriber import transcribe_from_path
 import shutil
 import os
 import subprocess

@@ -1,10 +1,10 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 import uuid
-from backend.shared_audio_cache import AUDIO_CACHE
-from backend.routes.cohere_client import generate_answer
-from backend.chroma_local.memory_manager import query_memory
-from backend.routes.elevenlabs_client import text_to_speech, split_text_into_chunks
+from shared_audio_cache import AUDIO_CACHE
+from routes.cohere_client import generate_answer
+from chroma_local.memory_manager import query_memory
+from routes.elevenlabs_client import text_to_speech, split_text_into_chunks
 
 import asyncio
 

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, UploadFile, File
-from backend.routes.elevenlabs_client import text_to_speech, split_text_into_chunks
-from backend.routes.cohere_client import generate_answer
-from backend.shared_audio_cache import AUDIO_CACHE
-from backend.routes.vosk_transcriber import transcribe_from_path, convert_to_wav
+from routes.elevenlabs_client import text_to_speech, split_text_into_chunks
+from routes.cohere_client import generate_answer
+from shared_audio_cache import AUDIO_CACHE
+from routes.vosk_transcriber import transcribe_from_path, convert_to_wav
 
 import uuid
 import os

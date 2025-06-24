@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.chroma_local.memory_manager import collection
+from chroma_local.memory_manager import collection
 
 router = APIRouter()
 

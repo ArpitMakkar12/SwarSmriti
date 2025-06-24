@@ -2,8 +2,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
 
-from backend.routes.cohere_client import summarize
-from backend.chroma_local.memory_manager import store_memory
+from routes.cohere_client import summarize
+from chroma_local.memory_manager import store_memory
 
 router = APIRouter()
 

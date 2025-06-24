@@ -3,12 +3,12 @@ from dotenv import load_dotenv
 load_dotenv() 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.routes.train_route import router as train_router
-from backend.routes.chat_route import router as chat_router  # ✅ Chat: text + audio ID
-from backend.routes.audio_route import router as audio_router  # ✅ Audio: streaming MP3
-from backend.routes import transcribe_route
-from backend.routes.voice_chat_route import router as voice_chat_router
-from backend.routes.memories_route import router as memories_router
+from routes.train_route import router as train_router
+from routes.chat_route import router as chat_router  # ✅ Chat: text + audio ID
+from routes.audio_route import router as audio_router  # ✅ Audio: streaming MP3
+from routes import transcribe_route
+from routes.voice_chat_route import router as voice_chat_router
+from routes.memories_route import router as memories_router
 
 app = FastAPI()
 

@@ -4,7 +4,7 @@ import asyncio
 
 router = APIRouter()
 
-from backend.shared_audio_cache import AUDIO_CACHE
+from shared_audio_cache import AUDIO_CACHE
 @router.get("/audio/{audio_id}")
 async def get_audio(audio_id: str):
     print(f"🔎 Audio request received for ID: {audio_id}")
