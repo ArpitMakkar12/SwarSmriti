@@ -1,12 +1,36 @@
 import wave
 import json
+import zipfile
+import urllib.request
 import os
 import subprocess
 import shutil
 from vosk import Model, KaldiRecognizer
 
+
+MODEL_PATH = "/tmp/vosk_model"
+MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
 # Load Vosk model globally once
-model = Model("backend/vosk_model")
+def setup_vosk_model():
+    if not os.path.exists(MODEL_PATH):
+        print("🔽 Downloading Vosk model...")
+        zip_path = "/tmp/vosk_model.zip"
+        urllib.request.urlretrieve(MODEL_URL, zip_path)
+
+        print("📦 Extracting Vosk model...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall("/tmp")
+
+        # Rename extracted folder to standard path
+        os.rename("/tmp/vosk-model-small-en-us-0.15", MODEL_PATH)
+        print("✅ Model ready.")
+
+    else:
+        print("✅ Vosk model already available.")
+
+    return Model(MODEL_PATH)
+
+model = setup_vosk_model()
 
 def convert_to_wav(input_path: str) -> str:
     output_path = input_path.replace(".webm", ".wav")
