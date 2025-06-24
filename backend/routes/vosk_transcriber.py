@@ -32,19 +32,19 @@ def setup_vosk_model():
 
 model = setup_vosk_model()
 
-def convert_to_wav(input_path: str) -> str:
-    output_path = input_path.replace(".webm", ".wav")
+# def convert_to_wav(input_path: str) -> str:
+#     output_path = input_path.replace(".webm", ".wav")
 
-    # Try to find ffmpeg in PATH
-    ffmpeg_path = shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise RuntimeError("❌ ffmpeg not found. Make sure it's in your system PATH.")
+#     # Try to find ffmpeg in PATH
+#     ffmpeg_path = shutil.which("ffmpeg")
+#     if not ffmpeg_path:
+#         raise RuntimeError("❌ ffmpeg not found. Make sure it's in your system PATH.")
 
-    command = [ffmpeg_path, "-i", input_path, "-ar", "16000", "-ac", "1", output_path]
-    print("Running command:", " ".join(command))
-    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+#     command = [ffmpeg_path, "-i", input_path, "-ar", "16000", "-ac", "1", output_path]
+#     print("Running command:", " ".join(command))
+#     subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
-    return output_path
+#     return output_path
 
 
 def transcribe_from_path(file_path: str) -> str:
