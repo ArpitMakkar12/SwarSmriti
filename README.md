@@ -51,7 +51,7 @@ This project addresses the emotional void often left behind after a loved one is
 ## 🚀 Live MVP & Demo
 
 * 🌐 **Live Demo**: [https://swarsmriti-1.onrender.com](https://swarsmriti-1.onrender.com)
-* 📽️ **Demo Video**: [YouTube Demo Link](https://youtu.be/your-demo-link) <!-- Replace with actual link -->
+* 📽️ **Demo Video**: [YouTube Demo Link](https://www.youtube.com/watch?v=xN1qYtvx7gQ) <!-- Replace with actual link -->
 
 ---
 
