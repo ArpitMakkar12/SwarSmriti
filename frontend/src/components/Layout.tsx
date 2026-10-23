@@ -1,93 +1,81 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Brain, MessageCircle, BookOpen, Home, Mic, UserRound } from 'lucide-react';
+import { Outlet, NavLink, Link } from 'react-router-dom';
 import { apiService } from '../services/api';
 
 type ServerState = 'waking' | 'online' | 'offline';
 
 const navItems = [
-  { path: '/', icon: Home, label: 'Dashboard' },
-  { path: '/persona', icon: UserRound, label: 'Persona & Voice' },
-  { path: '/train', icon: Brain, label: 'Train Memory' },
-  { path: '/talk', icon: MessageCircle, label: 'Talk' },
-  { path: '/memories', icon: BookOpen, label: 'Memories' },
+  { path: '/', label: 'Home', end: true },
+  { path: '/persona', label: 'Portrait & voice' },
+  { path: '/train', label: 'Add a memory' },
+  { path: '/talk', label: 'Talk' },
+  { path: '/memories', label: 'The album' },
 ];
 
-const statusStyle: Record<ServerState, { dot: string; text: string }> = {
-  waking: { dot: 'bg-amber-400 animate-pulse', text: 'Waking server… (up to a minute)' },
-  online: { dot: 'bg-green-500', text: 'Server online' },
-  offline: { dot: 'bg-red-500', text: 'Server unreachable' },
+const status: Record<ServerState, { dot: string; text: string }> = {
+  waking: { dot: 'bg-tape animate-pulse', text: 'Opening the archive…' },
+  online: { dot: 'bg-moss', text: 'The archive is open' },
+  offline: { dot: 'bg-oxblood', text: 'Archive unreachable' },
 };
 
 const Layout: React.FC = () => {
-  const location = useLocation();
   const [server, setServer] = useState<ServerState>('waking');
 
-  // Ping once on load: wakes the sleeping Render backend before the user needs it.
+  // One ping on load wakes the sleeping Render backend before it's needed.
   useEffect(() => {
     apiService.ping().then((ok) => setServer(ok ? 'online' : 'offline'));
   }, []);
 
   return (
-    <div className="min-h-screen bg-ivory">
-      {/* Header */}
-      <header className="bg-white border-b shadow-sm border-warm-beige">
-        <div className="flex items-center justify-between h-16 px-4 sm:px-6">
-          <Link to="/" className="flex items-center space-x-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-gradient-to-br from-rose-gold to-copper-rose">
-              <Mic className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold leading-tight text-charcoal">SwarSmriti</h1>
-              <p className="text-xs text-warm-grey sm:text-sm">Keep memories alive forever</p>
-            </div>
-          </Link>
-          <div className="flex items-center space-x-2 text-xs text-warm-grey" title={statusStyle[server].text}>
-            <span className={`w-2.5 h-2.5 rounded-full ${statusStyle[server].dot}`} />
-            <span className="hidden sm:inline">{statusStyle[server].text}</span>
-          </div>
+    <div className="flex min-h-screen flex-col md:flex-row">
+      {/* Side column (a scrolling top bar on phones) */}
+      <aside className="flex flex-col gap-6 border-b border-rule px-5 py-5 md:sticky md:top-0 md:h-screen md:w-64 md:shrink-0 md:gap-10 md:border-b-0 md:border-r md:px-8 md:py-10">
+        <Link to="/" className="flex flex-col gap-1">
+          <span className="font-display text-3xl italic leading-none text-ink">SwarSmriti</span>
+          <span className="text-[13px] text-ink-muted">a family's living archive</span>
+        </Link>
+
+        <nav aria-label="Main" className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0.5">
+          {navItems.map((item, i) => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.end}
+              className={({ isActive }) =>
+                `flex shrink-0 items-baseline gap-3 whitespace-nowrap border-b-2 px-1 py-2.5 text-[15px] transition-colors md:py-3 ${
+                  isActive ? 'border-oxblood font-bold text-ink' : 'border-transparent text-ink-soft hover:text-ink'
+                }`
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span className={`font-display text-sm ${isActive ? 'text-oxblood' : 'text-ink-muted'}`}>0{i + 1}</span>
+                  {item.label}
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
+
+        <div className="hidden flex-col gap-6 md:mt-auto md:flex">
+          <p className="font-display text-[15px] italic leading-relaxed text-ink-soft">“Some voices are too dear to lose.”</p>
+          <p className="flex items-center gap-2 text-xs text-ink-muted" aria-live="polite">
+            <span aria-hidden="true" className={`h-2 w-2 rounded-full ${status[server].dot}`} />
+            {status[server].text}
+          </p>
         </div>
-      </header>
+      </aside>
 
-      <div className="flex flex-col md:flex-row md:h-[calc(100vh-4rem)]">
-        {/* Sidebar (a scrollable top bar on phones) */}
-        <aside className="bg-white border-b md:border-b-0 md:border-r shadow-sm md:w-64 border-warm-beige md:flex md:flex-col">
-          <nav className="flex p-2 space-x-1 overflow-x-auto md:flex-col md:p-4 md:space-x-0 md:space-y-2">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-lg whitespace-nowrap transition-all duration-200 ${
-                    isActive
-                      ? 'bg-rose-gold/20 text-copper-rose border border-rose-gold/30'
-                      : 'text-warm-grey hover:bg-warm-beige/50 hover:text-charcoal border border-transparent'
-                  }`}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Footer: pushed to the bottom of the sidebar instead of floating over the page */}
-          <div className="hidden p-4 mt-auto md:block">
-            <div className="p-3 border rounded-lg bg-gradient-to-r from-rose-gold/10 to-copper-rose/10 border-rose-gold/20">
-              <p className="text-sm text-center text-warm-grey">Preserving memories for eternity</p>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main content */}
-        <main className="flex-1 overflow-auto bg-ivory">
-          <div className="max-w-6xl p-4 mx-auto sm:p-6">
-            <Outlet />
-          </div>
-        </main>
-      </div>
+      <main className="min-w-0 flex-1">
+        <div className="mx-auto max-w-5xl px-5 py-10 sm:px-10 md:py-14">
+          {server === 'offline' && (
+            <p role="alert" className="mb-8 rounded-lg border border-oxblood/30 bg-oxblood/5 px-4 py-3 text-sm text-oxblood-deep">
+              The archive can't be reached right now. Please check your connection and refresh in a minute.
+            </p>
+          )}
+          <Outlet />
+        </div>
+      </main>
     </div>
   );
 };

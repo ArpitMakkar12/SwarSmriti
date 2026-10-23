@@ -1,0 +1,39 @@
+import React from 'react';
+
+/** The strip of sticky tape that holds a letter or keepsake to the page. Purely decorative. */
+export const Tape: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <div
+    aria-hidden="true"
+    className={`absolute -top-3 h-6 w-28 bg-tape/70 shadow-sm ${className}`}
+    style={{ transform: 'rotate(-3deg)' }}
+  />
+);
+
+/** Every page starts the same way: a small caps line, a big serif title, a quiet subtitle. */
+export const PageHeader: React.FC<{ eyebrow: string; title: React.ReactNode; subtitle?: React.ReactNode }> = ({
+  eyebrow,
+  title,
+  subtitle,
+}) => (
+  <header className="flex flex-col gap-2 animate-fade-in">
+    <span className="eyebrow">{eyebrow}</span>
+    <h1 className="font-display text-5xl font-normal leading-[1.05] text-ink sm:text-6xl">{title}</h1>
+    {subtitle && <p className="max-w-2xl text-base text-ink-soft">{subtitle}</p>}
+  </header>
+);
+
+/** Three ink dots that rise and fall: "someone is thinking / remembering". */
+export const InkDots: React.FC = () => (
+  <span aria-hidden="true" className="inline-flex gap-1.5">
+    {[0, 1, 2].map((i) => (
+      <span key={i} className="h-1.5 w-1.5 rounded-full bg-oxblood animate-ink-dot" style={{ animationDelay: `${i * 0.18}s` }} />
+    ))}
+  </span>
+);
+
+/** A clear, inline error note in the house style. */
+export const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p role="alert" className="rounded-lg border border-oxblood/30 bg-oxblood/5 px-4 py-3 text-sm text-oxblood-deep">
+    {children}
+  </p>
+);

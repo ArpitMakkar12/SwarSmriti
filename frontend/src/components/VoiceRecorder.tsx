@@ -1,111 +1,93 @@
 import React from 'react';
-import { Mic, Square, Play, Pause } from 'lucide-react';
+import { Mic, Square, Play, Pause, RotateCcw } from 'lucide-react';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   disabled?: boolean;
-  /** Show the "play back / re-record" box after recording (off for voice chat, which sends right away). */
+  /** Show the "listen back / record again" row after recording. */
   showPlayback?: boolean;
+  /** Words under the button before recording starts. */
+  hint?: string;
 }
 
-const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplete, disabled, showPlayback = true }) => {
-  const {
-    isRecording,
-    recordingTime,
-    audioBlob,
-    startRecording,
-    stopRecording,
-    resetRecording,
-    formatTime,
-  } = useVoiceRecorder({ onRecordingComplete });
+const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
+  onRecordingComplete,
+  disabled,
+  showPlayback = true,
+  hint = 'Tap to start speaking',
+}) => {
+  const { isRecording, recordingTime, audioBlob, startRecording, stopRecording, resetRecording, formatTime } =
+    useVoiceRecorder({ onRecordingComplete });
 
   const [isPlaying, setIsPlaying] = React.useState(false);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
-  const playRecording = () => {
-    if (audioBlob && audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
-      }
+  React.useEffect(() => {
+    if (!audioBlob) return;
+    const url = URL.createObjectURL(audioBlob);
+    if (audioRef.current) {
+      audioRef.current.src = url;
+      audioRef.current.onended = () => setIsPlaying(false);
+    }
+    return () => URL.revokeObjectURL(url);
+  }, [audioBlob]);
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play();
+      setIsPlaying(true);
     }
   };
 
-  React.useEffect(() => {
-    if (audioBlob) {
-      const url = URL.createObjectURL(audioBlob);
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        audioRef.current.onended = () => setIsPlaying(false);
-      }
-      return () => URL.revokeObjectURL(url);
-    }
-  }, [audioBlob]);
-
   return (
-    <div className="space-y-4">
-      {/* Recording Controls */}
-      <div className="flex items-center justify-center space-x-4">
-        {!isRecording ? (
-          <button
-            onClick={startRecording}
-            disabled={disabled}
-            className={`
-              flex items-center justify-center w-16 h-16 rounded-full transition-all duration-200
-              ${disabled 
-                ? 'bg-warm-beige text-warm-grey cursor-not-allowed' 
-                : 'bg-gradient-to-br from-rose-gold to-copper-rose text-white hover:shadow-lg hover:scale-105 active:scale-95'
-              }
-            `}
-          >
-            <Mic className="w-6 h-6" />
-          </button>
-        ) : (
-          <button
-            onClick={stopRecording}
-            className="flex items-center justify-center w-16 h-16 rounded-full bg-red-500 text-white animate-recording"
-          >
-            <Square className="w-6 h-6" />
-          </button>
-        )}
-      </div>
-
-      {/* Recording Status */}
-      {isRecording && (
-        <div className="text-center animate-fade-in">
-          <div className="flex items-center justify-center space-x-2 text-copper-rose">
-            <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-            <span className="font-medium">Recording: {formatTime(recordingTime)}</span>
-          </div>
-        </div>
+    <div className="flex flex-col items-center gap-4">
+      {!isRecording ? (
+        <button
+          type="button"
+          onClick={startRecording}
+          disabled={disabled}
+          aria-label="Start recording"
+          className="flex h-20 w-20 items-center justify-center rounded-full border-[1.5px] border-ink text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-ink"
+        >
+          <Mic className="h-7 w-7" strokeWidth={1.6} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={stopRecording}
+          aria-label="Stop recording"
+          className="flex h-20 w-20 items-center justify-center rounded-full bg-oxblood text-card animate-record-ring"
+        >
+          <Square className="h-6 w-6" fill="currentColor" />
+        </button>
       )}
 
-      {/* Playback Controls */}
+      <p className="text-sm text-ink-soft" aria-live="polite">
+        {isRecording ? (
+          <span>
+            <span className="font-medium text-oxblood">Listening · {formatTime(recordingTime)}</span> · tap to finish
+          </span>
+        ) : (
+          hint
+        )}
+      </p>
+
       {showPlayback && audioBlob && !isRecording && (
-        <div className="bg-white rounded-lg p-4 border border-warm-beige animate-slide-up">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={playRecording}
-                className="flex items-center justify-center w-10 h-10 rounded-full bg-rose-gold/20 text-copper-rose hover:bg-rose-gold/30 transition-colors"
-              >
-                {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-              </button>
-              <span className="text-sm text-warm-grey">
-                {isPlaying ? 'Playing...' : 'Tap to play recording'}
-              </span>
-            </div>
-            <button
-              onClick={resetRecording}
-              className="text-sm text-warm-grey hover:text-charcoal underline"
-            >
-              Re-record
-            </button>
-          </div>
+        <div className="flex items-center gap-5 rounded-full border border-rule px-4 py-2 animate-fade-in">
+          <button type="button" onClick={togglePlayback} className="flex items-center gap-2 text-sm text-ink hover:text-oxblood">
+            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {isPlaying ? 'Pause' : 'Listen back'}
+          </button>
+          <span aria-hidden="true" className="h-4 w-px bg-rule" />
+          <button type="button" onClick={resetRecording} className="flex items-center gap-2 text-sm text-ink-soft hover:text-ink">
+            <RotateCcw className="h-4 w-4" /> Clear
+          </button>
           <audio ref={audioRef} className="hidden" />
         </div>
       )}

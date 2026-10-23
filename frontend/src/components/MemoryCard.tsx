@@ -1,67 +1,51 @@
 import React from 'react';
-import { Calendar, Tag, FileText, Mic } from 'lucide-react';
+import { Mic } from 'lucide-react';
 import { Memory } from '../types';
+import { Tape } from './ui';
+import { letterDate, tiltFor } from '../utils/format';
 
 interface MemoryCardProps {
   memory: Memory;
-  onClick?: () => void;
+  onOpen: () => void;
 }
 
-const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick }) => {
+/** One memory in the album: a keepsake card, taped down at a slight angle. */
+const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onOpen }) => {
+  const tilt = tiltFor(memory.id);
+
   return (
-    <div 
-      className="bg-white rounded-lg border border-warm-beige p-4 hover:shadow-md transition-all duration-200 cursor-pointer group"
-      onClick={onClick}
+    <button
+      type="button"
+      onClick={onOpen}
+      // The tilt lives in a CSS variable so hovering can straighten and lift the card.
+      className="group relative mb-8 block w-full break-inside-avoid bg-card px-6 pb-5 pt-8 text-left shadow-keepsake transition-transform duration-300 [transform:rotate(var(--tilt))] hover:[transform:translateY(-4px)_rotate(0deg)]"
+      style={{ '--tilt': `${tilt}deg` } as React.CSSProperties}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center space-x-2">
-          {memory.source === 'voice' ? <Mic className="w-4 h-4 text-copper-rose" /> : <FileText className="w-4 h-4 text-copper-rose" />}
-          <span className="text-sm text-warm-grey">{memory.source === 'voice' ? 'Voice memory' : 'Memory'}</span>
-        </div>
-        <div className="flex items-center space-x-1 text-xs text-warm-grey">
-          <Calendar className="w-3 h-3" />
-          <span>{new Date(memory.timestamp).toLocaleDateString()}</span>
-        </div>
+      <Tape className={tilt > 0 ? 'right-8' : 'left-8'} />
+
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="font-display text-sm italic text-ink-muted">{letterDate(memory.timestamp)}</span>
+        {memory.source === 'voice' && (
+          <span className="inline-flex items-center gap-1 rounded-full border border-oxblood/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-oxblood">
+            <Mic className="h-3 w-3" /> spoken
+          </span>
+        )}
       </div>
 
-      {/* Summary */}
-      <div className="mb-3">
-        <p className="text-charcoal font-medium text-sm mb-2 line-clamp-2 group-hover:text-copper-rose transition-colors">
-          {memory.summary}
-        </p>
-      </div>
+      <h3 className="mb-3 font-display text-xl leading-snug text-ink transition-colors group-hover:text-oxblood">{memory.summary}</h3>
 
-      {/* Tags */}
-      {memory.tags && memory.tags.length > 0 && (
-        <div className="flex items-center space-x-2 mb-3">
-          <Tag className="w-3 h-3 text-warm-grey" />
-          <div className="flex flex-wrap gap-1">
-            {memory.tags.slice(0, 3).map((tag, index) => (
-              <span
-                key={index}
-                className="px-2 py-1 bg-rose-gold/10 text-copper-rose text-xs rounded-full border border-rose-gold/20"
-              >
-                {tag}
-              </span>
-            ))}
-            {memory.tags.length > 3 && (
-              <span className="text-xs text-warm-grey">
-                +{memory.tags.length - 3} more
-              </span>
-            )}
-          </div>
+      <p className="mb-4 line-clamp-4 text-sm leading-relaxed text-ink-soft">{memory.text}</p>
+
+      {memory.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {memory.tags.slice(0, 4).map((tag) => (
+            <span key={tag} className="chip">
+              {tag}
+            </span>
+          ))}
         </div>
       )}
-
-      {/* Content Preview */}
-      <div className="bg-ivory/50 rounded p-2 border border-warm-beige/50">
-        <p className="text-xs text-warm-grey line-clamp-2">
-          {memory.text.substring(0, 150)}
-          {memory.text.length > 150 && '...'}
-        </p>
-      </div>
-    </div>
+    </button>
   );
 };
 

@@ -1,18 +1,58 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Volume2 } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { Play, Pause } from 'lucide-react';
 
 interface AudioPlayerProps {
   audioUrl: string;
   autoPlay?: boolean;
+  label?: string; // e.g. "In Arpit's voice"
   className?: string;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, className = '' }) => {
+const BARS = 64;
+
+/** Read the real loudness of the audio, in BARS slices, so the waveform is the actual voice. */
+async function readPeaks(url: string): Promise<number[]> {
+  const data = await (await fetch(url)).arrayBuffer();
+  const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(data);
+  const samples = buffer.getChannelData(0);
+  const slice = Math.max(1, Math.floor(samples.length / BARS));
+  const peaks: number[] = [];
+  for (let i = 0; i < BARS; i++) {
+    let max = 0;
+    for (let j = i * slice; j < (i + 1) * slice && j < samples.length; j += 16) {
+      max = Math.max(max, Math.abs(samples[j]));
+    }
+    peaks.push(max);
+  }
+  const loudest = Math.max(...peaks, 0.01);
+  return peaks.map((p) => Math.max(0.1, p / loudest));
+}
+
+const formatTime = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`;
+
+/**
+ * Plays a reply as an "ink" waveform drawn from the real audio.
+ * The part already heard turns oxblood; click or drag anywhere on it to jump.
+ */
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, label, className = '' }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const clipId = useId();
+  const [peaks, setPeaks] = useState<number[] | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [failed, setFailed] = useState(false);
+
+  // Draw the waveform from the audio itself (falls back to a gentle flat line).
+  useEffect(() => {
+    let cancelled = false;
+    readPeaks(audioUrl)
+      .then((p) => !cancelled && setPeaks(p))
+      .catch(() => !cancelled && setPeaks(Array(BARS).fill(0.18)));
+    return () => {
+      cancelled = true;
+    };
+  }, [audioUrl]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -25,7 +65,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, c
     };
     const onPlay = () => {
       setIsPlaying(true);
-      // Only one reply speaks at a time: pause every other player on the page.
+      // Only one voice speaks at a time: pause every other player on the page.
       document.querySelectorAll('audio').forEach((other) => other !== audio && other.pause());
     };
     const onPause = () => setIsPlaying(false);
@@ -48,7 +88,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, c
     return () => events.forEach(([name, fn]) => audio.removeEventListener(name, fn));
   }, [audioUrl, autoPlay]);
 
-  const togglePlayPause = () => {
+  const togglePlay = () => {
     const audio = audioRef.current;
     if (!audio) return;
     // The 'play' / 'pause' listeners above keep the icon in sync.
@@ -56,46 +96,72 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, c
     else audio.play().catch(() => setFailed(true));
   };
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  const seek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (audioRef.current) audioRef.current.currentTime = Number(e.target.value);
   };
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  if (failed) return <p className={`text-sm italic text-ink-muted ${className}`}>This voice note couldn't be played.</p>;
 
-  if (failed) {
-    return <p className={`text-xs text-warm-grey ${className}`}>Audio couldn't be played.</p>;
-  }
+  const width = BARS * 6;
+  const heard = duration > 0 ? (currentTime / duration) * width : 0;
+  const bars = (peaks ?? Array(BARS).fill(0.1)).map((p, i) => ({ x: i * 6 + 3, h: p * 34 }));
 
-  // The <audio> element is ALWAYS rendered. (Before, it was hidden while "loading",
-  // so it could never load -- the spinner stayed forever.)
   return (
-    <div className={`flex items-center space-x-3 ${className}`}>
+    <div className={`flex items-center gap-4 ${className}`}>
+      {/* Always rendered, so it can load (the old player hid it while "loading" and never loaded). */}
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
 
       <button
         type="button"
-        onClick={togglePlayPause}
-        aria-label={isPlaying ? 'Pause' : 'Play'}
-        className="flex items-center justify-center w-8 h-8 text-white transition-colors rounded-full bg-copper-rose hover:bg-copper-rose/80"
+        onClick={togglePlay}
+        aria-label={isPlaying ? 'Pause' : `Play${label ? ` – ${label}` : ''}`}
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-oxblood text-card transition-colors hover:bg-oxblood-deep"
       >
-        {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+        {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
       </button>
 
-      <div className="flex items-center flex-1 space-x-2">
-        <div className="relative flex-1 h-2 overflow-hidden rounded-full bg-warm-beige">
-          <div className="h-full transition-all duration-100 rounded-full bg-copper-rose" style={{ width: `${progress}%` }} />
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="relative h-10">
+          <svg
+            aria-hidden="true"
+            viewBox={`0 0 ${width} 40`}
+            preserveAspectRatio="none"
+            className={`h-10 w-full ${peaks ? 'animate-ink-in' : ''}`}
+          >
+            <defs>
+              <clipPath id={clipId}>
+                <rect x="0" y="0" width={heard} height="40" />
+              </clipPath>
+            </defs>
+            <g stroke="#C9BBA6" strokeWidth="2.4" strokeLinecap="round">
+              {bars.map((b) => (
+                <line key={b.x} x1={b.x} x2={b.x} y1={20 - b.h / 2} y2={20 + b.h / 2} />
+              ))}
+            </g>
+            <g stroke="#8C2F39" strokeWidth="2.4" strokeLinecap="round" clipPath={`url(#${clipId})`}>
+              {bars.map((b) => (
+                <line key={b.x} x1={b.x} x2={b.x} y1={20 - b.h / 2} y2={20 + b.h / 2} />
+              ))}
+            </g>
+          </svg>
+          {/* An invisible slider on top: click/drag/arrow keys to move through the voice note. */}
+          <input
+            type="range"
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={currentTime}
+            onChange={seek}
+            aria-label="Position in voice note"
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
         </div>
-        <div className="flex items-center space-x-1 text-xs text-warm-grey min-w-max">
-          <Volume2 className="w-3 h-3" />
-          <span>{formatTime(currentTime)}</span>
-          {duration > 0 && (
-            <>
-              <span>/</span>
-              <span>{formatTime(duration)}</span>
-            </>
-          )}
+        <div className="flex justify-between text-xs text-ink-muted">
+          <span>{label}</span>
+          <span>
+            {formatTime(currentTime)}
+            {duration > 0 && ` / ${formatTime(duration)}`}
+          </span>
         </div>
       </div>
     </div>
