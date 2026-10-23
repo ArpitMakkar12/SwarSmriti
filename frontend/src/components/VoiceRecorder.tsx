@@ -1,13 +1,15 @@
 import React from 'react';
-import { Mic, MicOff, Square, Play, Pause } from 'lucide-react';
+import { Mic, Square, Play, Pause } from 'lucide-react';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   disabled?: boolean;
+  /** Show the "play back / re-record" box after recording (off for voice chat, which sends right away). */
+  showPlayback?: boolean;
 }
 
-const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplete, disabled }) => {
+const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplete, disabled, showPlayback = true }) => {
   const {
     isRecording,
     recordingTime,
@@ -83,7 +85,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onRecordingComplete, disa
       )}
 
       {/* Playback Controls */}
-      {audioBlob && !isRecording && (
+      {showPlayback && audioBlob && !isRecording && (
         <div className="bg-white rounded-lg p-4 border border-warm-beige animate-slide-up">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">

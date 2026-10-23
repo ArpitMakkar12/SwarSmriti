@@ -3,53 +3,58 @@ import { Play, Pause, Volume2 } from 'lucide-react';
 
 interface AudioPlayerProps {
   audioUrl: string;
+  autoPlay?: boolean;
   className?: string;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, className = '' }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, autoPlay = false, className = '' }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const handleLoadedMetadata = () => {
-      setDuration(audio.duration);
-      setIsLoading(false);
+    const onLoaded = () => {
+      if (Number.isFinite(audio.duration)) setDuration(audio.duration);
+      // Browsers may block autoplay until the user has clicked something; that's fine.
+      if (autoPlay) audio.play().catch(() => undefined);
     };
-
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime);
+    const onPlay = () => {
+      setIsPlaying(true);
+      // Only one reply speaks at a time: pause every other player on the page.
+      document.querySelectorAll('audio').forEach((other) => other !== audio && other.pause());
     };
-
-    const handleEnded = () => {
+    const onPause = () => setIsPlaying(false);
+    const onTime = () => setCurrentTime(audio.currentTime);
+    const onEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
     };
+    const onError = () => setFailed(true);
 
-    const handleError = () => {
-      setIsLoading(false);
-      console.error('Audio failed to load');
-    };
+    const events: [string, () => void][] = [
+      ['loadedmetadata', onLoaded],
+      ['play', onPlay],
+      ['pause', onPause],
+      ['timeupdate', onTime],
+      ['ended', onEnded],
+      ['error', onError],
+    ];
+    events.forEach(([name, fn]) => audio.addEventListener(name, fn));
+    return () => events.forEach(([name, fn]) => audio.removeEventListener(name, fn));
+  }, [audioUrl, autoPlay]);
 
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('error', handleError);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('error', handleError);
-    };
-  }, [audioUrl]);
-
-  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const togglePlayPause = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    // The 'play' / 'pause' listeners above keep the icon in sync.
+    if (isPlaying) audio.pause();
+    else audio.play().catch(() => setFailed(true));
+  };
 
   const formatTime = (time: number) => {
     const minutes = Math.floor(time / 60);
@@ -57,46 +62,31 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioUrl, className = '' }) =
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
-  const togglePlayPause = () => {
-    const audio = audioRef.current;
-    if (!audio) return;
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      audio.play();
-    }
-    setIsPlaying(!isPlaying);
-  };
-
-  if (isLoading) {
-    return (
-      <div className={`flex items-center space-x-3 ${className}`}>
-        <div className="w-8 h-8 bg-warm-beige rounded-full animate-pulse"></div>
-        <div className="flex-1 bg-warm-beige h-2 rounded-full animate-pulse"></div>
-      </div>
-    );
+  if (failed) {
+    return <p className={`text-xs text-warm-grey ${className}`}>Audio couldn't be played.</p>;
   }
 
+  // The <audio> element is ALWAYS rendered. (Before, it was hidden while "loading",
+  // so it could never load -- the spinner stayed forever.)
   return (
     <div className={`flex items-center space-x-3 ${className}`}>
       <audio ref={audioRef} src={audioUrl} preload="metadata" />
-      
+
       <button
+        type="button"
         onClick={togglePlayPause}
-        className="flex items-center justify-center w-8 h-8 rounded-full bg-copper-rose text-white hover:bg-copper-rose/80 transition-colors"
+        aria-label={isPlaying ? 'Pause' : 'Play'}
+        className="flex items-center justify-center w-8 h-8 text-white transition-colors rounded-full bg-copper-rose hover:bg-copper-rose/80"
       >
         {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
       </button>
 
-      <div className="flex-1 flex items-center space-x-2">
-        <div className="flex-1 bg-warm-beige rounded-full h-2 relative overflow-hidden">
-          <div 
-            className="bg-copper-rose h-full rounded-full transition-all duration-100"
-            style={{ width: `${progressPercentage}%` }}
-          />
+      <div className="flex items-center flex-1 space-x-2">
+        <div className="relative flex-1 h-2 overflow-hidden rounded-full bg-warm-beige">
+          <div className="h-full transition-all duration-100 rounded-full bg-copper-rose" style={{ width: `${progress}%` }} />
         </div>
-        
         <div className="flex items-center space-x-1 text-xs text-warm-grey min-w-max">
           <Volume2 className="w-3 h-3" />
           <span>{formatTime(currentTime)}</span>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Tag, FileText } from 'lucide-react';
+import { Calendar, Tag, FileText, Mic } from 'lucide-react';
 import { Memory } from '../types';
 
 interface MemoryCardProps {
@@ -16,8 +16,8 @@ const MemoryCard: React.FC<MemoryCardProps> = ({ memory, onClick }) => {
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-copper-rose" />
-          <span className="text-sm text-warm-grey">Memory</span>
+          {memory.source === 'voice' ? <Mic className="w-4 h-4 text-copper-rose" /> : <FileText className="w-4 h-4 text-copper-rose" />}
+          <span className="text-sm text-warm-grey">{memory.source === 'voice' ? 'Voice memory' : 'Memory'}</span>
         </div>
         <div className="flex items-center space-x-1 text-xs text-warm-grey">
           <Calendar className="w-3 h-3" />
