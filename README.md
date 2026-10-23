@@ -43,13 +43,14 @@ H --> I[Text + audio back to the browser];
 backend/
 ├── main.py              # app setup, CORS, error handling, /health
 ├── config.py            # every setting, read from environment variables
-├── db.py                # Postgres + pgvector: memories, persona profile, activity
+├── db.py                # Postgres + pgvector: people, their memories, activity
 ├── errors.py            # ServiceError -> clean JSON error responses
-├── routes/              # HTTP endpoints (train, chat, memories, transcribe, profile)
+├── routes/              # HTTP endpoints (people, train, chat, memories, transcribe)
 ├── services/            # outside services: cohere, elevenlabs, speech (vosk), persona (the "brain")
 └── vosk_model/          # small English speech model
 frontend/src/
-├── pages/               # Dashboard, Persona, Train, Talk, Memories
+├── context/             # PersonContext: who is being remembered right now
+├── pages/               # Home, Family, Portrait, Add a memory, Talk, Album
 ├── components/          # Layout, AudioPlayer, ChatBubble, VoiceRecorder, MemoryCard
 ├── services/api.ts      # every call to the backend
 └── utils/audio.ts       # recording -> WAV conversion in the browser
