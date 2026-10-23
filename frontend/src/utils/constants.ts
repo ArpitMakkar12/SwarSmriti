@@ -1,12 +1,12 @@
 // The backend address lives in services/api.ts (read from VITE_API_BASE_URL).
 
+// The Heirloom palette (the same values live in tailwind.config.js)
 export const COLORS = {
-  ivory: '#F4F3EF',
-  charcoal: '#3C3C3B',
-  warmGrey: '#6E6E6E',
-  roseGold: '#D4A5A5',
-  copperRose: '#C97C5D',
-  warmBeige: '#E0DDD6',
+  paper: '#F2ECE1',
+  card: '#FBF7EF',
+  ink: '#2A2420',
+  oxblood: '#8C2F39',
+  tape: '#D6C4A4',
 };
 
 export const ROUTES = {

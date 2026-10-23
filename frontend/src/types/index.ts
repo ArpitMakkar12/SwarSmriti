@@ -14,6 +14,10 @@ export interface ChatMessage {
   timestamp: string;
   audioUrl?: string;
   audioError?: string;
+  /** Summaries of the memories the AI used for this reply ("Remembered from …"). */
+  memories?: string[];
+  /** A notice like "server unreachable", shown differently and never sent back as history. */
+  isError?: boolean;
 }
 
 /** One past turn sent back to the server so the AI remembers the conversation. */
