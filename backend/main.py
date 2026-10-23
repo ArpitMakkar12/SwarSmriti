@@ -1,43 +1,54 @@
 import os
-from dotenv import load_dotenv
-load_dotenv() 
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from routes.train_route import router as train_router
-from routes.chat_route import router as chat_router  # ✅ Chat: text + audio ID
-from routes.audio_route import router as audio_router  # ✅ Audio: streaming MP3
-from routes import transcribe_route
-from routes.voice_chat_route import router as voice_chat_router
-from routes.memories_route import router as memories_router
+from fastapi.responses import JSONResponse
 
-app = FastAPI()
+import config
+import db
+from errors import ServiceError
+from routes import chat_route, memories_route, profile_route, train_route, transcribe_route
 
-# ✅ Add CORS middleware
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()  # connect + create tables on startup
+    yield
+    db.close_db()
+
+
+app = FastAPI(title="SwarSmriti API", lifespan=lifespan)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://swarsmriti-1.onrender.com",  # ✅ your deployed frontend
-        "http://localhost:5173"
-    ],
-    allow_credentials=True,
+    allow_origins=config.FRONTEND_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+@app.exception_handler(ServiceError)
+async def service_error_handler(request: Request, exc: ServiceError):
+    """Any ServiceError raised anywhere becomes a clean JSON error for the frontend."""
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
-# Include your routers:
-app.include_router(train_router)
-app.include_router(chat_router)
-app.include_router(audio_router)  # ✅ New: streaming endpoint
+
+@app.get("/")
+@app.get("/health")
+def health():
+    """Cheap endpoint the frontend pings to wake the server up (Render free tier sleeps)."""
+    return {"status": "ok"}
+
+
+app.include_router(train_route.router)
+app.include_router(chat_route.router)
+app.include_router(memories_route.router)
 app.include_router(transcribe_route.router)
-app.include_router(voice_chat_router)
-app.include_router(memories_router)
+app.include_router(profile_route.router)
 
-for route in app.routes:
-    print(f"ROUTE: {route.path} [{route.methods}]")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)

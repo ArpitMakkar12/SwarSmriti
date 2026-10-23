@@ -1,26 +1,23 @@
-from fastapi import APIRouter
-from chroma_local.memory_manager import collection
+from fastapi import APIRouter, HTTPException
+
+import db
 
 router = APIRouter()
 
+
 @router.get("/memories")
-async def get_memories():
-    try:
-        # Get all memories from ChromaDB
-        results = collection.get()
-        
-        memories = []
-        for i, doc in enumerate(results['documents']):
-            metadata = results['metadatas'][i]
-            memories.append({
-                "id": results['ids'][i],
-                "text": doc,
-                "summary": metadata.get('summary', ''),
-                "tags": metadata.get('tags', '').split(',') if metadata.get('tags') else [],
-                "timestamp": metadata.get('timestamp', ''),
-                "voice_path_url": metadata.get('voice_path_url', '')
-            })
-        
-        return {"status": "success", "data": memories}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+def get_memories():
+    return {"status": "success", "data": db.list_memories()}
+
+
+@router.delete("/memories/{memory_id}")
+def delete_memory(memory_id: str):
+    if not db.delete_memory(memory_id):
+        raise HTTPException(404, "Memory not found.")
+    return {"status": "success"}
+
+
+@router.get("/stats")
+def get_stats():
+    """Real numbers for the dashboard (the old dashboard showed made-up ones)."""
+    return {"status": "success", "data": db.get_stats()}

@@ -1,91 +1,50 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-import uuid
-from shared_audio_cache import AUDIO_CACHE
-from routes.cohere_client import generate_answer
-from chroma_local.memory_manager import query_memory
-from routes.elevenlabs_client import text_to_speech, split_text_into_chunks
+import json
 
-import asyncio
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel
+
+import config
+import db
+from services import persona, speech
 
 router = APIRouter()
 
 
+class Turn(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
+    history: list[Turn] = []
+
 
 @router.post("/chat")
-async def chat_memory(data: ChatRequest):
+def chat(data: ChatRequest):
+    question = data.question.strip()
+    if not question:
+        raise HTTPException(400, "Please type a message.")
+    result = persona.answer(question, [t.model_dump() for t in data.history])
+    db.log_activity("chat", question)
+    return {"status": "success", "data": result}
+
+
+@router.post("/voice-chat")
+def voice_chat(audio: UploadFile = File(...), history: str = Form("[]")):
+    wav = audio.file.read(config.MAX_UPLOAD_BYTES + 1)
+    if len(wav) > config.MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "Recording is too long. Keep voice messages under a minute or two.")
+
+    transcript = speech.transcribe_wav(wav)
+    if len(transcript) < 2:
+        raise HTTPException(422, "I couldn't hear any words in that recording. Please try again, a little closer to the mic.")
+
     try:
-        print(f"👉 Incoming question: {data.question}")
+        past = json.loads(history)
+    except json.JSONDecodeError:
+        past = []
 
-        # 1️⃣ Query memory
-        memories, metadata = query_memory(data.question)
-        context = "\n".join(memories) if memories else ""
-        prompt = f"{context}\n\nQuestion: {data.question}"
-
-        # 2️⃣ Generate answer
-        answer = await generate_answer(prompt)
-        print(f"✅ Answer: {answer}")
-
-        # 3️⃣ Generate audio chunks & store
-        chunks = split_text_into_chunks(answer)
-        audio_segments = []
-        for chunk in chunks:
-            audio_data = await text_to_speech(chunk)
-            audio_segments.append(audio_data)
-
-        # Store in cache with a UUID
-        audio_id = str(uuid.uuid4())
-        AUDIO_CACHE[audio_id] = audio_segments
-
-        # 4️⃣ Return answer + audio URL
-        return {
-    "status": "success",
-    "data": {
-        "answer": answer,
-        "audio_url": f"/audio/{audio_id}"
-    }
-}
-
-
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "detail": str(e)}
-
-# @router.post("/chat")
-# async def chat_memory(data: ChatRequest):
-#     try:
-#         print(f"👉 Incoming question: {data.question}")
-
-#         # 🔧 Step 1: Skip real answer for testing
-#         answer = "Hello, this is a test."
-
-#         # 🔈 Step 2: Generate audio
-#         try:
-#             audio_data = await text_to_speech(answer)
-#             print("✅ Audio generated successfully.")
-#         except Exception as audio_err:
-#             print("❌ ElevenLabs failed:", audio_err)
-#             return {
-#                 "status": "error",
-#                 "detail": f"Audio generation failed: {str(audio_err)}"
-#             }
-
-#         # 🧠 Step 3: Store audio
-#         audio_id = str(uuid.uuid4())
-#         AUDIO_CACHE[audio_id] = [audio_data]
-#         print(f"🧠 Stored audio in cache under ID: {audio_id}")
-
-#         # ✅ Step 4: Return answer + audio_url
-#         return {
-#             "status": "success",
-#             "answer": answer,
-#             "audio_url": f"/audio/{audio_id}"
-#         }
-
-#     except Exception as e:
-#         import traceback
-#         traceback.print_exc()
-#         return {"status": "error", "detail": str(e)}
+    result = persona.answer(transcript, past if isinstance(past, list) else [])
+    db.log_activity("voice_chat", transcript)
+    return {"status": "success", "data": {"transcript": transcript, **result}}
