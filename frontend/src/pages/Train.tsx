@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Plus } from 'lucide-react';
 import VoiceRecorder from '../components/VoiceRecorder';
-import { PageHeader, Notice, Tape } from '../components/ui';
+import { PageHeader, Notice, Tape, NeedsPerson } from '../components/ui';
+import { usePerson } from '../context/PersonContext';
 import { apiService } from '../services/api';
 import { blobToWav } from '../utils/audio';
 import { MAX_MEMORY_CHARS, MIN_MEMORY_CHARS, SAMPLE_MEMORY_PROMPTS } from '../utils/constants';
@@ -11,6 +12,7 @@ import { Memory } from '../types';
 const suggestedLabels = ['childhood', 'family', 'values', 'achievements', 'relationships', 'hobbies', 'fears', 'dreams', 'advice', 'philosophy'];
 
 const Train: React.FC = () => {
+  const { current: person, reload, loading } = usePerson();
   const [mode, setMode] = useState<'write' | 'speak'>('write');
   const [text, setText] = useState('');
   const [spoken, setSpoken] = useState('');
@@ -33,13 +35,14 @@ const Train: React.FC = () => {
 
   const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (saving || tooShort || tooLong) return;
+    if (!person || saving || tooShort || tooLong) return;
     setSaving(true);
     setError(null);
-    const res = await apiService.trainMemory({ text: current, tags, source: mode === 'write' ? 'text' : 'voice' });
+    const res = await apiService.trainMemory({ person_id: person.id, text: current, tags, source: mode === 'write' ? 'text' : 'voice' });
     setSaving(false);
     if (res.status === 'success' && res.data) {
       setSaved(res.data);
+      reload(); // keeps the memory counts on The family page up to date
       setText('');
       setSpoken('');
       setTags([]);
@@ -83,23 +86,29 @@ const Train: React.FC = () => {
     </span>
   );
 
+  if (!person) return loading ? null : <NeedsPerson what="adding memories" />;
+
   return (
     <div className="flex flex-col gap-12">
-      <PageHeader eyebrow="Add to the album" title="Tell me a story" subtitle="Small moments matter as much as big ones. Write it down, or just say it." />
+      <PageHeader
+        eyebrow={`Add to ${person.name}'s album`}
+        title="Tell me a story"
+        subtitle={`A memory of ${person.name}, or one told in their words. Small moments matter as much as big ones.`}
+      />
 
       {saved && (
-        <div className="relative max-w-3xl bg-card px-7 pb-6 pt-9 shadow-letter animate-settle sm:px-10">
+        <div className="relative max-w-3xl pb-6 bg-card px-7 pt-9 shadow-letter animate-settle sm:px-10">
           <Tape className="left-12" />
-          <span className="eyebrow text-moss">Kept in the album</span>
-          <p className="mt-2 font-display text-2xl leading-snug text-ink">{saved.summary}</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <span className="eyebrow text-moss">Kept in {person.name}'s album</span>
+          <p className="mt-2 text-2xl leading-snug font-display text-ink">{saved.summary}</p>
+          <div className="flex flex-wrap items-center gap-2 mt-4">
             {saved.tags.map((t) => (
               <span key={t} className="chip">
                 {t}
               </span>
             ))}
-            <Link to="/memories" className="ml-auto flex items-center gap-1 text-sm text-ink underline underline-offset-4 hover:text-oxblood">
-              See it in the album <ArrowRight className="h-4 w-4" />
+            <Link to="/memories" className="flex items-center gap-1 ml-auto text-sm underline text-ink underline-offset-4 hover:text-oxblood">
+              See it in the album <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
         </div>
@@ -128,7 +137,7 @@ const Train: React.FC = () => {
           <>
             <div className="flex flex-col gap-3">
               <span className="eyebrow">Need a beginning?</span>
-              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+              <div className="flex gap-3 px-1 pb-2 -mx-1 overflow-x-auto">
                 {SAMPLE_MEMORY_PROMPTS.map((prompt) => (
                   <button
                     key={prompt}
@@ -142,7 +151,7 @@ const Train: React.FC = () => {
               </div>
             </div>
 
-            <div className="relative max-w-3xl bg-card px-7 pb-6 pt-10 shadow-letter sm:px-10">
+            <div className="relative max-w-3xl pt-10 pb-6 bg-card px-7 shadow-letter sm:px-10">
               <Tape className="left-12" />
               <label htmlFor="memory" className="sr-only">
                 The memory
@@ -155,22 +164,22 @@ const Train: React.FC = () => {
                 rows={9}
                 disabled={saving}
                 placeholder="It was the summer of…"
-                className="lined w-full resize-none bg-transparent font-display text-xl leading-9 text-ink outline-none placeholder:italic placeholder:text-ink-muted/70"
+                className="w-full text-xl leading-9 bg-transparent outline-none resize-none lined font-display text-ink placeholder:italic placeholder:text-ink-muted/70"
               />
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
                 {counter}
                 <span className="text-xs text-ink-muted">Ctrl + Enter to keep it</span>
               </div>
             </div>
           </>
         ) : (
-          <div className="flex max-w-3xl flex-col gap-8">
+          <div className="flex flex-col max-w-3xl gap-8">
             <div className="flex flex-col items-center gap-2 py-6">
               <VoiceRecorder onRecordingComplete={onRecorded} disabled={saving || transcribing} hint="Tap and tell it like you'd tell a friend" />
-              {transcribing && <p className="font-display italic text-ink-soft">Writing down your words…</p>}
+              {transcribing && <p className="italic font-display text-ink-soft">Writing down your words…</p>}
             </div>
             {spoken && (
-              <div className="relative bg-card px-7 pb-6 pt-10 shadow-letter animate-settle sm:px-10">
+              <div className="relative pt-10 pb-6 bg-card px-7 shadow-letter animate-settle sm:px-10">
                 <Tape className="left-12" />
                 <label htmlFor="spoken" className="eyebrow">
                   What we heard. Fix anything that's wrong; record again to add more
@@ -180,7 +189,7 @@ const Train: React.FC = () => {
                   value={spoken}
                   onChange={(e) => setSpoken(e.target.value)}
                   rows={6}
-                  className="lined mt-3 w-full resize-none bg-transparent font-display text-xl leading-9 text-ink outline-none"
+                  className="w-full mt-3 text-xl leading-9 bg-transparent outline-none resize-none lined font-display text-ink"
                 />
                 <div className="mt-3">{counter}</div>
               </div>
@@ -188,7 +197,7 @@ const Train: React.FC = () => {
           </div>
         )}
 
-        <div className="flex max-w-3xl flex-col gap-3">
+        <div className="flex flex-col max-w-3xl gap-3">
           <span className="eyebrow">Label it (optional, a few are added for you)</span>
           <div className="flex flex-wrap gap-2">
             {[...new Set([...suggestedLabels, ...tags])].map((tag) => {
@@ -208,7 +217,7 @@ const Train: React.FC = () => {
               );
             })}
           </div>
-          <div className="flex max-w-sm items-center gap-2 border-b border-rule-strong">
+          <div className="flex items-center max-w-sm gap-2 border-b border-rule-strong">
             <label htmlFor="new-tag" className="sr-only">
               Your own label
             </label>
@@ -224,7 +233,7 @@ const Train: React.FC = () => {
                 }
               }}
               placeholder="Your own label…"
-              className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-ink-muted"
+              className="flex-1 min-w-0 py-2 text-sm bg-transparent outline-none placeholder:text-ink-muted"
             />
             <button
               type="button"
@@ -233,9 +242,9 @@ const Train: React.FC = () => {
                 setNewTag('');
               }}
               aria-label="Add label"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:text-oxblood"
+              className="flex items-center justify-center rounded-full h-9 w-9 text-ink-soft hover:text-oxblood"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="w-4 h-4" />
             </button>
           </div>
         </div>

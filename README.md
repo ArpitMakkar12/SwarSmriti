@@ -6,6 +6,7 @@
 
 **SwarSmriti** is an AI voice memory assistant that preserves the voice and thoughts of a loved one. You:
 
+* Add **everyone you want to remember**: a grandparent, a parent, a friend. Each person has their own portrait, memories and voice.
 * Tell it **who** the person is (name, how they talk) and optionally **clone their voice** from old recordings.
 * **Train** it with memories, typed or spoken.
 * **Talk** to it by text or voice. It answers in the first person, grounded only in the shared memories, in their voice.

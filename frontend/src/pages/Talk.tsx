@@ -2,30 +2,26 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Mic, Square, ArrowUp } from 'lucide-react';
 import ChatBubble from '../components/ChatBubble';
-import { InkDots } from '../components/ui';
+import { InkDots, NeedsPerson } from '../components/ui';
+import { usePerson } from '../context/PersonContext';
 import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
-import { ChatMessage, ChatReply, HistoryTurn } from '../types';
+import { ChatMessage, ChatReply, HistoryTurn, Person } from '../types';
 import { apiService } from '../services/api';
 import { base64ToAudioUrl, blobToWav } from '../utils/audio';
 
 const STARTERS = ['What was your childhood like?', 'What advice would you give me?', 'Tell me about our family.'];
 
-const Talk: React.FC = () => {
+/** One conversation with one person. Switching person starts a fresh conversation (see Talk below). */
+const Conversation: React.FC<{ person: Person }> = ({ person }) => {
   const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState(searchParams.get('ask') ?? '');
   const [busy, setBusy] = useState(false);
-  const [personaName, setPersonaName] = useState('');
+  const personaName = person.name;
   const endRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
   const messagesRef = useRef<ChatMessage[]>([]);
   messagesRef.current = messages;
-
-  useEffect(() => {
-    apiService.getProfile().then((res) => {
-      if (res.status === 'success' && res.data) setPersonaName(res.data.name);
-    });
-  }, []);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -57,7 +53,7 @@ const Talk: React.FC = () => {
     setInput('');
     add({ type: 'user', content: q });
     setBusy(true);
-    const res = await apiService.chat(q, past);
+    const res = await apiService.chat(person.id, q, past);
     setBusy(false);
     if (res.status === 'success' && res.data) addReply(res.data);
     else add({ type: 'ai', isError: true, content: res.message || 'Something went wrong. Please try again.' });
@@ -69,7 +65,7 @@ const Talk: React.FC = () => {
     setBusy(true);
     try {
       const wav = await blobToWav(blob, 16000);
-      const res = await apiService.voiceChat(wav, past);
+      const res = await apiService.voiceChat(person.id, wav, past);
       if (res.status === 'success' && res.data) {
         add({ type: 'user', content: res.data.transcript });
         addReply(res.data);
@@ -81,7 +77,7 @@ const Talk: React.FC = () => {
     } finally {
       setBusy(false);
     }
-    // history/add/addReply only use refs and state setters, so this stays stable
+    // history/add/addReply only use refs and state setters; person never changes inside one Conversation
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -94,14 +90,14 @@ const Talk: React.FC = () => {
     <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-10">
       <header className="flex flex-col gap-2 animate-fade-in">
         <span className="eyebrow">In conversation with</span>
-        <h1 className="font-display text-5xl font-normal leading-none text-ink sm:text-6xl">{personaName || 'Your loved one'}</h1>
+        <h1 className="text-5xl font-normal leading-none font-display text-ink sm:text-6xl">{personaName}</h1>
         <p className="text-ink-soft">Built from the memories you've shared, spoken in their voice.</p>
       </header>
 
-      <section aria-label="Conversation" aria-live="polite" className="flex max-w-3xl flex-1 flex-col gap-10">
+      <section aria-label="Conversation" aria-live="polite" className="flex flex-col flex-1 max-w-3xl gap-10">
         {messages.length === 0 && !busy && (
           <div className="flex flex-col gap-4 py-6 animate-fade-in">
-            <p className="font-display text-2xl italic text-ink-soft">Where would you like to begin?</p>
+            <p className="text-2xl italic font-display text-ink-soft">Where would you like to begin?</p>
             <div className="flex flex-wrap gap-3">
               {STARTERS.map((s) => (
                 <button
@@ -122,7 +118,7 @@ const Talk: React.FC = () => {
         ))}
 
         {busy && (
-          <p className="flex items-center gap-3 font-display text-lg italic text-ink-soft">
+          <p className="flex items-center gap-3 text-lg italic font-display text-ink-soft">
             <InkDots /> {personaName || 'They'} {messages.length && messages[messages.length - 1].type === 'user' ? 'is remembering…' : 'is listening…'}
           </p>
         )}
@@ -139,7 +135,7 @@ const Talk: React.FC = () => {
       >
         <div className="flex min-w-0 flex-1 items-center gap-3 border-b-[1.5px] border-ink pb-2">
           {isRecording ? (
-            <p className="flex-1 py-2 font-display text-xl italic text-oxblood" aria-live="polite">
+            <p className="flex-1 py-2 text-xl italic font-display text-oxblood" aria-live="polite">
               Listening… {formatTime(recordingTime)} <span className="text-base text-ink-soft">tap the square to send</span>
             </p>
           ) : (
@@ -153,7 +149,7 @@ const Talk: React.FC = () => {
                 onChange={(e) => setInput(e.target.value)}
                 disabled={busy}
                 placeholder={`Ask ${name} something…`}
-                className="min-w-0 flex-1 bg-transparent py-2 font-display text-xl italic text-ink outline-none placeholder:text-ink-muted/80"
+                className="flex-1 min-w-0 py-2 text-xl italic bg-transparent outline-none font-display text-ink placeholder:text-ink-muted/80"
               />
             </>
           )}
@@ -167,16 +163,24 @@ const Talk: React.FC = () => {
             isRecording ? 'bg-oxblood text-card animate-record-ring' : 'border-[1.5px] border-ink text-ink hover:bg-ink hover:text-paper'
           }`}
         >
-          {isRecording ? <Square className="h-4 w-4" fill="currentColor" /> : <Mic className="h-5 w-5" strokeWidth={1.7} />}
+          {isRecording ? <Square className="w-4 h-4" fill="currentColor" /> : <Mic className="w-5 h-5" strokeWidth={1.7} />}
         </button>
         {!isRecording && (
-          <button type="submit" disabled={busy || !input.trim()} aria-label="Ask" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-colors hover:bg-oxblood disabled:opacity-40">
-            <ArrowUp className="h-5 w-5" />
+          <button type="submit" disabled={busy || !input.trim()} aria-label="Ask" className="flex items-center justify-center w-12 h-12 transition-colors rounded-full shrink-0 bg-ink text-paper hover:bg-oxblood disabled:opacity-40">
+            <ArrowUp className="w-5 h-5" />
           </button>
         )}
       </form>
     </div>
   );
+};
+
+/** The Talk page: a fresh conversation for whoever is selected in the side column. */
+const Talk: React.FC = () => {
+  const { current, loading } = usePerson();
+  if (!current) return loading ? null : <NeedsPerson what="starting a conversation" />;
+  // key = person id: switching person throws away the old conversation and starts a new one.
+  return <Conversation key={current.id} person={current} />;
 };
 
 export default Talk;

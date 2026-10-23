@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Upload, X, Check } from 'lucide-react';
 import VoiceRecorder from '../components/VoiceRecorder';
-import { PageHeader, Notice, Tape } from '../components/ui';
+import { PageHeader, Notice, Tape, NeedsPerson } from '../components/ui';
+import { usePerson } from '../context/PersonContext';
 import { apiService } from '../services/api';
 import { blobToWav } from '../utils/audio';
-import { Profile } from '../types';
 
 const MAX_SAMPLES = 5;
 
 const Persona: React.FC = () => {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { current: person, reload, loading } = usePerson();
   const [name, setName] = useState('');
   const [about, setAbout] = useState('');
   const [saving, setSaving] = useState(false);
@@ -21,25 +21,28 @@ const Persona: React.FC = () => {
   const [cloning, setCloning] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Fill the form with whoever is selected in the side column (and refill when you switch).
   useEffect(() => {
-    apiService.getProfile().then((res) => {
-      if (res.status === 'success' && res.data) {
-        setProfile(res.data);
-        setName(res.data.name);
-        setAbout(res.data.about);
-      }
-    });
-  }, []);
+    setName(person?.name ?? '');
+    setAbout(person?.about ?? '');
+    setSaved(false);
+    setSaveError(null);
+    setSamples([]);
+    setConsent(false);
+    setMessage(null);
+  }, [person?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!person) return loading ? null : <NeedsPerson what="painting their portrait" />;
 
   const saveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     setSaved(false);
     setSaveError(null);
-    const res = await apiService.updateProfile(name, about);
+    const res = await apiService.updatePerson(person.id, name, about);
     setSaving(false);
-    if (res.status === 'success' && res.data) {
-      setProfile(res.data);
+    if (res.status === 'success') {
+      await reload(); // the new name appears in the side column too
       setSaved(true);
     } else {
       setSaveError(res.message || 'Could not save the portrait.');
@@ -59,34 +62,34 @@ const Persona: React.FC = () => {
   const createClone = async () => {
     setCloning(true);
     setMessage(null);
-    const res = await apiService.cloneVoice(samples, consent);
+    const res = await apiService.cloneVoice(person.id, samples, consent);
     setCloning(false);
-    if (res.status === 'success' && res.data) {
-      setProfile(res.data);
+    if (res.status === 'success') {
+      await reload();
       setSamples([]);
-      setMessage({ ok: true, text: 'The voice is ready. Every reply will now be spoken in it.' });
+      setMessage({ ok: true, text: `${person.name}'s voice is ready. Every reply will now be spoken in it.` });
     } else {
       setMessage({ ok: false, text: res.message || 'The voice could not be created.' });
     }
   };
 
   const removeClone = async () => {
-    if (!confirm('Remove this voice? Replies will use a default voice again.')) return;
-    const res = await apiService.removeVoice();
-    if (res.status === 'success' && res.data) setProfile(res.data);
+    if (!confirm(`Remove ${person.name}'s voice? Replies will use a default voice again.`)) return;
+    const res = await apiService.removeVoice(person.id);
+    if (res.status === 'success') await reload();
     else setMessage({ ok: false, text: res.message || 'Could not remove the voice.' });
   };
 
   return (
     <div className="flex flex-col gap-14">
       <PageHeader
-        eyebrow="The portrait"
-        title="Who are we remembering?"
+        eyebrow="The portrait of"
+        title={person.name}
         subtitle="Their name and the way they speak shape every reply. Their voice is how it sounds."
       />
 
       {/* Who they are, written on a letter */}
-      <form onSubmit={saveProfile} className="relative flex max-w-3xl flex-col gap-8 bg-card px-7 pb-8 pt-10 shadow-letter sm:px-10">
+      <form onSubmit={saveProfile} className="relative flex flex-col max-w-3xl gap-8 pt-10 pb-8 bg-card px-7 shadow-letter sm:px-10">
         <Tape className="left-12" />
         <div className="flex flex-col gap-2">
           <label htmlFor="name" className="eyebrow">
@@ -112,7 +115,7 @@ const Persona: React.FC = () => {
             maxLength={2000}
             rows={4}
             placeholder="Retired maths teacher from Kakinada. Warm and teasing, calls everyone 'beta', mixes Telugu into English, always asks if you've eaten."
-            className="lined resize-none bg-transparent font-display text-lg leading-9 text-ink outline-none placeholder:italic placeholder:text-ink-muted/70"
+            className="text-lg leading-9 bg-transparent outline-none resize-none lined font-display text-ink placeholder:italic placeholder:text-ink-muted/70"
           />
         </div>
         <div className="flex flex-wrap items-center gap-4">
@@ -121,7 +124,7 @@ const Persona: React.FC = () => {
           </button>
           {saved && (
             <span className="flex items-center gap-1.5 text-sm text-moss" role="status">
-              <Check className="h-4 w-4" /> Saved
+              <Check className="w-4 h-4" /> Saved
             </span>
           )}
         </div>
@@ -129,16 +132,16 @@ const Persona: React.FC = () => {
       </form>
 
       {/* Their voice */}
-      <section className="flex max-w-3xl flex-col gap-6">
-        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink pb-4">
+      <section className="flex flex-col max-w-3xl gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4 pb-4 border-b border-ink">
           <div className="flex flex-col gap-1">
             <span className="eyebrow">Their voice</span>
-            <h2 className="font-display text-3xl text-ink">
-              {profile?.has_cloned_voice ? 'Speaking in their own voice' : 'Not yet their voice'}
+            <h2 className="text-3xl font-display text-ink">
+              {person.has_cloned_voice ? 'Speaking in their own voice' : 'Not yet their voice'}
             </h2>
           </div>
-          {profile?.has_cloned_voice && (
-            <button type="button" onClick={removeClone} className="text-sm text-ink-soft underline underline-offset-4 hover:text-oxblood">
+          {person.has_cloned_voice && (
+            <button type="button" onClick={removeClone} className="text-sm underline text-ink-soft underline-offset-4 hover:text-oxblood">
               Remove this voice
             </button>
           )}
@@ -151,12 +154,12 @@ const Persona: React.FC = () => {
 
         <div className="grid gap-5 md:grid-cols-2">
           <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border-[1.5px] border-dashed border-rule-strong px-6 py-10 text-center transition-colors hover:border-oxblood hover:bg-card">
-            <Upload className="h-6 w-6 text-oxblood" strokeWidth={1.6} />
-            <span className="font-display text-xl text-ink">Choose recordings</span>
+            <Upload className="w-6 h-6 text-oxblood" strokeWidth={1.6} />
+            <span className="text-xl font-display text-ink">Choose recordings</span>
             <span className="text-xs text-ink-muted">mp3, wav, m4a and most audio files</span>
             <input type="file" accept="audio/*" multiple className="sr-only" onChange={(e) => addFiles(e.target.files)} />
           </label>
-          <div className="flex flex-col items-center justify-center gap-2 rounded-sm border border-rule px-6 py-8">
+          <div className="flex flex-col items-center justify-center gap-2 px-6 py-8 border rounded-sm border-rule">
             <VoiceRecorder
               onRecordingComplete={addRecording}
               disabled={cloning || samples.length >= MAX_SAMPLES}
@@ -169,15 +172,15 @@ const Persona: React.FC = () => {
         {samples.length > 0 && (
           <ul className="flex flex-wrap gap-3">
             {samples.map((file, i) => (
-              <li key={`${file.name}-${i}`} className="flex items-center gap-2 bg-card py-2 pl-4 pr-2 text-sm text-ink shadow-keepsake">
+              <li key={`${file.name}-${i}`} className="flex items-center gap-2 py-2 pl-4 pr-2 text-sm bg-card text-ink shadow-keepsake">
                 <span className="max-w-[16rem] truncate font-display italic">{file.name}</span>
                 <button
                   type="button"
                   onClick={() => setSamples(samples.filter((_, j) => j !== i))}
                   aria-label={`Remove ${file.name}`}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted hover:bg-paper hover:text-oxblood"
+                  className="flex items-center justify-center w-8 h-8 rounded-full text-ink-muted hover:bg-paper hover:text-oxblood"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="w-4 h-4" />
                 </button>
               </li>
             ))}
@@ -191,14 +194,14 @@ const Persona: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-4">
           <button type="button" onClick={createClone} disabled={cloning || samples.length === 0 || !consent} className="btn-seal">
-            {cloning ? 'Creating the voice… (about a minute)' : profile?.has_cloned_voice ? 'Replace the voice' : 'Create their voice'}
+            {cloning ? 'Creating the voice… (about a minute)' : person.has_cloned_voice ? 'Replace the voice' : 'Create their voice'}
           </button>
           <span className="text-xs text-ink-muted">Uses ElevenLabs voice cloning (needs an ElevenLabs Starter plan or above).</span>
         </div>
 
         {message &&
           (message.ok ? (
-            <p role="status" className="font-display text-lg italic text-moss">
+            <p role="status" className="text-lg italic font-display text-moss">
               {message.text}
             </p>
           ) : (

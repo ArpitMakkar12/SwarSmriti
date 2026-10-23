@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, X, ArrowRight } from 'lucide-react';
 import MemoryCard from '../components/MemoryCard';
-import { PageHeader, Notice, Tape } from '../components/ui';
+import { PageHeader, Notice, Tape, NeedsPerson } from '../components/ui';
+import { usePerson } from '../context/PersonContext';
 import { apiService } from '../services/api';
 import { letterDate } from '../utils/format';
 import { Memory } from '../types';
 
 const Memories: React.FC = () => {
+  const { current: person, reload, loading: loadingPeople } = usePerson();
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,14 +19,18 @@ const Memories: React.FC = () => {
   const [open, setOpen] = useState<Memory | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Load this person's album (again whenever you switch person).
   useEffect(() => {
-    // (The old page called http://localhost:8000 directly, so the live site always showed 0.)
-    apiService.getMemories().then((res) => {
+    if (!person) return;
+    setLoading(true);
+    setSearch('');
+    setTag('');
+    apiService.getMemories(person.id).then((res) => {
       if (res.status === 'success' && res.data) setMemories(res.data);
       else setError(res.message || 'Could not open the album.');
       setLoading(false);
     });
-  }, []);
+  }, [person?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Close the open memory with the Escape key.
   useEffect(() => {
@@ -42,6 +48,7 @@ const Memories: React.FC = () => {
     if (res.status === 'success') {
       setMemories((prev) => prev.filter((m) => m.id !== open.id));
       setOpen(null);
+      reload();
     } else {
       setError(res.message || 'Could not remove the memory.');
     }
@@ -60,12 +67,14 @@ const Memories: React.FC = () => {
       return order === 'newest' ? diff : -diff;
     });
 
+  if (!person) return loadingPeople ? null : <NeedsPerson what="opening an album" />;
+
   const words = memories.reduce((sum, m) => sum + m.text.split(/\s+/).filter(Boolean).length, 0);
 
   return (
     <div className="flex flex-col gap-10">
       <PageHeader
-        eyebrow="The album"
+        eyebrow={`${person.name}'s album`}
         title="Everything kept so far"
         subtitle={
           loading
@@ -80,7 +89,7 @@ const Memories: React.FC = () => {
       <div className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center gap-6">
           <div className="flex min-w-[16rem] flex-1 items-center gap-3 border-b-[1.5px] border-ink pb-1">
-            <Search className="h-5 w-5 text-ink-muted" aria-hidden="true" />
+            <Search className="w-5 h-5 text-ink-muted" aria-hidden="true" />
             <label htmlFor="search" className="sr-only">
               Search memories
             </label>
@@ -89,7 +98,7 @@ const Memories: React.FC = () => {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search for a name, a place, a word…"
-              className="min-w-0 flex-1 bg-transparent py-2 font-display text-lg italic outline-none placeholder:text-ink-muted/80"
+              className="flex-1 min-w-0 py-2 text-lg italic bg-transparent outline-none font-display placeholder:text-ink-muted/80"
             />
           </div>
           <div className="flex gap-4 text-sm" role="group" aria-label="Order">
@@ -128,7 +137,7 @@ const Memories: React.FC = () => {
 
       {shown.length > 0 ? (
         // CSS columns give the album a loose, hand-arranged look
-        <div className="columns-1 gap-8 pt-4 sm:columns-2 lg:columns-3">
+        <div className="gap-8 pt-4 columns-1 sm:columns-2 lg:columns-3">
           {shown.map((m) => (
             <MemoryCard key={m.id} memory={m} onOpen={() => setOpen(m)} />
           ))}
@@ -136,12 +145,12 @@ const Memories: React.FC = () => {
       ) : (
         !loading && (
           <div className="flex flex-col items-start gap-4 py-10">
-            <p className="font-display text-2xl italic text-ink-soft">
+            <p className="text-2xl italic font-display text-ink-soft">
               {term || tag ? 'Nothing in the album matches that.' : 'The album is empty. Every family story starts with one memory.'}
             </p>
             {!term && !tag && (
               <Link to="/train" className="btn-ink">
-                Add the first memory <ArrowRight className="h-4 w-4" />
+                Add the first memory <ArrowRight className="w-4 h-4" />
               </Link>
             )}
           </div>
@@ -159,26 +168,26 @@ const Memories: React.FC = () => {
             aria-modal="true"
             aria-labelledby="memory-title"
             onClick={(e) => e.stopPropagation()}
-            className="relative my-8 w-full max-w-2xl bg-card px-7 pb-8 pt-11 shadow-letter animate-settle sm:px-12"
+            className="relative w-full max-w-2xl pb-8 my-8 bg-card px-7 pt-11 shadow-letter animate-settle sm:px-12"
           >
             <Tape className="left-12" />
             <button
               type="button"
               onClick={() => setOpen(null)}
               aria-label="Close"
-              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full text-ink-muted hover:bg-paper hover:text-ink"
+              className="absolute flex items-center justify-center w-10 h-10 rounded-full right-4 top-4 text-ink-muted hover:bg-paper hover:text-ink"
             >
-              <X className="h-5 w-5" />
+              <X className="w-5 h-5" />
             </button>
-            <p className="font-display text-sm italic text-ink-muted">
+            <p className="text-sm italic font-display text-ink-muted">
               {letterDate(open.timestamp)} · {open.source === 'voice' ? 'told by voice' : 'written down'}
             </p>
-            <h2 id="memory-title" className="mt-3 font-display text-3xl leading-snug text-ink">
+            <h2 id="memory-title" className="mt-3 text-3xl leading-snug font-display text-ink">
               {open.summary}
             </h2>
             <p className="mt-6 whitespace-pre-wrap font-display text-lg leading-[1.75] text-ink">{open.text}</p>
             {open.tags.length > 0 && (
-              <div className="mt-6 flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 mt-6">
                 {open.tags.map((t) => (
                   <span key={t} className="chip">
                     {t}
@@ -186,11 +195,11 @@ const Memories: React.FC = () => {
                 ))}
               </div>
             )}
-            <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-dashed border-rule pt-5">
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-5 mt-8 border-t border-dashed border-rule">
               <Link to={`/talk?ask=${encodeURIComponent(`Tell me more about this: ${open.summary}`)}`} className="btn-outline">
-                Ask about this memory <ArrowRight className="h-4 w-4" />
+                Ask {person.name.split(' ')[0]} about it <ArrowRight className="w-4 h-4" />
               </Link>
-              <button type="button" onClick={remove} disabled={deleting} className="text-sm text-ink-soft underline underline-offset-4 hover:text-oxblood disabled:opacity-50">
+              <button type="button" onClick={remove} disabled={deleting} className="text-sm underline text-ink-soft underline-offset-4 hover:text-oxblood disabled:opacity-50">
                 {deleting ? 'Removing…' : 'Remove from the album'}
               </button>
             </div>
