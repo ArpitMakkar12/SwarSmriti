@@ -1,144 +1,114 @@
-import { TrainRequest, ChatRequest, ApiResponse, Memory, ChatMessage } from '../types';
+import {
+  ApiResponse,
+  ChatReply,
+  HistoryTurn,
+  Memory,
+  Profile,
+  Stats,
+  TrainRequest,
+  VoiceChatReply,
+} from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+// Set in frontend/.env.production (deployed) or frontend/.env.local (your laptop).
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '');
 
-
+// Render's free tier sleeps; the first request can take ~1 minute while it wakes.
+const TIMEOUT_MS = 120_000;
 
 class ApiService {
-  private async makeRequest<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
-    try {
-      console.log(`Making request to: ${API_BASE_URL}${endpoint}`);
-      console.log('Request options:', options);
+  /** One place that sends every request and turns any failure into { status: 'error', message }. */
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    const isForm = options.body instanceof FormData;
 
+    try {
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
         ...options,
+        signal: controller.signal,
+        // For FormData the browser must set Content-Type itself (it adds the boundary).
+        headers: isForm ? options.headers : { 'Content-Type': 'application/json', ...options.headers },
       });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
+      const body = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Response error:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        // FastAPI errors look like { detail: "..." } (or a list for validation errors)
+        const detail = typeof body.detail === 'string' ? body.detail : `Request failed (${response.status})`;
+        return { status: 'error', message: detail };
       }
-
-      const data = await response.json();
-      console.log('Response data:', data);
-      return data;
+      return body as ApiResponse<T>;
     } catch (error) {
-      console.error('API request failed:', error);
+      const aborted = error instanceof DOMException && error.name === 'AbortError';
       return {
         status: 'error',
-        message: error instanceof Error ? error.message : 'Unknown error occurred',
+        message: aborted
+          ? 'The server took too long to answer. It may still be waking up, please try again.'
+          : 'Could not reach the server. Check your connection and try again.',
       };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  async trainMemory(data: TrainRequest): Promise<ApiResponse<{ summary: string }>> {
-    console.log('Training memory with data:', data);
-    return this.makeRequest('/train', {
+  /** Cheap ping. Used to wake the server and show its status in the header. */
+  async ping(): Promise<boolean> {
+    const res = await this.request<unknown>('/health');
+    return res.status !== 'error';
+  }
+
+  trainMemory(data: TrainRequest) {
+    return this.request<Memory>('/train', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  getMemories() {
+    return this.request<Memory[]>('/memories');
+  }
+
+  deleteMemory(id: string) {
+    return this.request<unknown>(`/memories/${id}`, { method: 'DELETE' });
+  }
+
+  getStats() {
+    return this.request<Stats>('/stats');
+  }
+
+  chat(question: string, history: HistoryTurn[]) {
+    return this.request<ChatReply>('/chat', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({ question, history }),
     });
   }
 
-  async chatWithAI(data: ChatRequest): Promise<ApiResponse<{ answer: string; audio_url: string }>> {
-    console.log('Chatting with AI:', data);
-    return this.makeRequest('/chat', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  voiceChat(wav: Blob, history: HistoryTurn[]) {
+    const form = new FormData();
+    form.append('audio', wav, 'voice.wav');
+    form.append('history', JSON.stringify(history));
+    return this.request<VoiceChatReply>('/voice-chat', { method: 'POST', body: form });
   }
 
-  async transcribeAudio(audioFile: File): Promise<ApiResponse<{ transcript: string }>> {
-    console.log('Transcribing audio file:', audioFile);
-    
-    const formData = new FormData();
-    formData.append('file', audioFile);
-
-    try {
-      console.log(`Making transcription request to: ${API_BASE_URL}/transcribe`);
-      
-      const response = await fetch(`${API_BASE_URL}/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      console.log('Transcription response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Transcription error:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('Transcription response data:', data);
-      return { status: 'success', data };
-    } catch (error) {
-      console.error('Transcription failed:', error);
-      return {
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Transcription failed',
-      };
-    }
+  transcribe(wav: Blob) {
+    const form = new FormData();
+    form.append('file', wav, 'memory.wav');
+    return this.request<{ transcript: string }>('/transcribe', { method: 'POST', body: form });
   }
 
-  async voiceChat(audioFile: File): Promise<ApiResponse<{ transcript: string; answer: string; audio_url: string }>> {
-    console.log('Voice chat with audio file:', audioFile);
-    
-    const formData = new FormData();
-    formData.append('audio', audioFile);
-
-    try {
-      console.log(`Making voice chat request to: ${API_BASE_URL}/voice-chat`);
-      
-      const response = await fetch(`${API_BASE_URL}/voice-chat`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      console.log('Voice chat response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Voice chat error:', errorText);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-
-      const data = await response.json();
-      console.log('Voice chat response data:', data);
-      return { status: 'success', data };
-    } catch (error) {
-      console.error('Voice chat failed:', error);
-      return {
-        status: 'error',
-        message: error instanceof Error ? error.message : 'Voice chat failed',
-      };
-    }
+  getProfile() {
+    return this.request<Profile>('/profile');
   }
 
-  getAudioUrl(audioId: string): string {
-    return `${API_BASE_URL}/audio/${audioId}`;
+  updateProfile(name: string, about: string) {
+    return this.request<Profile>('/profile', { method: 'PUT', body: JSON.stringify({ name, about }) });
   }
 
-  // Test connection to backend
-  async testConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/docs`);
-      return response.ok;
-    } catch (error) {
-      console.error('Backend connection test failed:', error);
-      return false;
-    }
+  cloneVoice(samples: File[], consent: boolean) {
+    const form = new FormData();
+    samples.forEach((file) => form.append('files', file, file.name));
+    form.append('consent', String(consent));
+    return this.request<Profile>('/profile/voice', { method: 'POST', body: form });
+  }
+
+  removeVoice() {
+    return this.request<Profile>('/profile/voice', { method: 'DELETE' });
   }
 }
 
