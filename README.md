@@ -1,190 +1,119 @@
-# 🫤 SwarSmriti – Preserving Memories with AI
+# 🎙️ SwarSmriti – Preserving Memories with AI
 
 > Voice your legacy. Immortalize memories. Speak to tomorrow.
 
 ## 🧠 Concept
 
-**SwarSmriti** is an innovative AI-powered voice memory assistant designed to preserve and relive the voices and thoughts of loved ones. It allows users to:
+**SwarSmriti** is an AI voice memory assistant that preserves the voice and thoughts of a loved one. You:
 
-* Train a voice agent with personal memories and sentiments.
-* Interact with it via voice or text.
-* Receive emotionally resonant responses in the cloned voice of the individual.
+* Tell it **who** the person is (name, how they talk) and optionally **clone their voice** from old recordings.
+* **Train** it with memories, typed or spoken.
+* **Talk** to it by text or voice. It answers in the first person, grounded only in the shared memories, in their voice.
 
-This project addresses the emotional void often left behind after a loved one is gone by creating a digital legacy — a personalized, voice-based AI that can comfort, converse, and preserve essence beyond life.
+It is honest by design: it never invents personal facts that aren't in the memories, and if someone sincerely asks, it says it is an AI made from those memories.
+
+---
+
+## 🔁 How it works
+
+```mermaid
+graph TD;
+A[Memory: typed, or recorded -> WAV in browser -> Vosk speech-to-text] --> B[Cohere: summary + tags + embedding];
+B --> C[(Postgres + pgvector)];
+D[Question: text or voice] --> E[Cohere embedding];
+E --> F[pgvector: closest memories];
+C --> F;
+F --> G[Cohere Command A: answer in first person as the persona];
+G --> H[ElevenLabs: speech in the cloned voice];
+H --> I[Text + audio back to the browser];
+```
 
 ---
 
 ## 🛠️ Tech Stack
 
-### 🖙 Backend
+**Backend** (`backend/`): FastAPI · Postgres + pgvector (e.g. free [Neon](https://neon.com)) · Cohere (Command A chat, Embed v4) · ElevenLabs (TTS + Instant Voice Cloning) · Vosk (offline speech-to-text)
 
-* **FastAPI**: High-performance backend framework.
-* **Vosk**: Lightweight offline speech-to-text engine.
-* **Python**: Core programming language.
-* **Uvicorn**: ASGI server for FastAPI.
-* **ChromaDB**: Vector database for memory embeddings.
-* **Cohere API**: For semantic embeddings and natural language understanding.
-* **ElevenLabs API**: For realistic voice synthesis.
-* **Render.com**: Deployment platform.
+**Frontend** (`frontend/`): React + TypeScript · Vite · Tailwind CSS · lucide-react
 
-### 🖜 Frontend
-
-* **React.js + TypeScript**: Dynamic and typed frontend.
-* **TailwindCSS**: Utility-first CSS framework.
-* **Shadcn/UI**: Styled components library.
-* **Recharts**: For memory visualizations.
-* **Render.com (Static Site Hosting)**
-
----
-
-## 🔥 Features
-
-* 🎙️ Voice Memory Upload & Transcription
-* 🧠 Memory Training via Vector Embedding
-* 💬 Voice + Text Conversations with AI
-* 🚣️ Realistic AI Voice Replies
-* 📚 Memory Recall and Summary
-* 💾 Persistent, personal memory bank
-
----
-
-## 🚀 Live MVP & Demo
-
-* 🌐 **Live Demo**: [MVP Link](https://swarsmriti-1.onrender.com)
-* 📽️ **Demo Video**: [YouTube Demo Link](https://www.youtube.com/watch?v=xN1qYtvx7gQ) <!-- Replace with actual link -->
-
----
-
-## 🧪 Setup & Build Instructions
-
-### 🔧 Prerequisites
-
-* Node.js >= 18
-* Python >= 3.10
-* pip / virtualenv
-* Git
-
----
-
-### 🛠️ Backend Setup (Arpit Makkar's Contribution)
-
-1. **Clone Repo**
-
-```bash
-git clone https://github.com/your-username/swarsmriti.git
-cd swarsmriti/backend
-```
-
-2. **Create Virtual Environment**
-
-```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-venv\Scripts\activate     # Windows
-```
-
-3. **Install Dependencies**
-
-```bash
-pip install -r requirements.txt
-```
-
-4. **Run Locally**
-
-```bash
-uvicorn main:app --reload
-```
-
-5. **Directory Structure**
+**Hosting:** Render (backend web service + static site)
 
 ```
 backend/
-🏠
-├── routes/                # API endpoints
-├── vosk_transcriber.py    # Speech-to-text logic
-├── main.py                # FastAPI app setup
-├── memory.py              # ChromaDB integration
-├── voice.py               # ElevenLabs integration
-└── ...
+├── main.py              # app setup, CORS, error handling, /health
+├── config.py            # every setting, read from environment variables
+├── db.py                # Postgres + pgvector: memories, persona profile, activity
+├── errors.py            # ServiceError -> clean JSON error responses
+├── routes/              # HTTP endpoints (train, chat, memories, transcribe, profile)
+├── services/            # outside services: cohere, elevenlabs, speech (vosk), persona (the "brain")
+└── vosk_model/          # small English speech model
+frontend/src/
+├── pages/               # Dashboard, Persona, Train, Talk, Memories
+├── components/          # Layout, AudioPlayer, ChatBubble, VoiceRecorder, MemoryCard
+├── services/api.ts      # every call to the backend
+└── utils/audio.ts       # recording -> WAV conversion in the browser
 ```
 
 ---
 
-### 🌐 Frontend Setup (Keshav Sharma's Contribution)
+## 🧪 Run it locally
 
-1. **Navigate to frontend folder**
+**Prerequisites:** Python 3.13, Node.js 18+, a Postgres database with pgvector (a free Neon project works), Cohere + ElevenLabs API keys.
+
+### Backend
 
 ```bash
-cd ../frontend
+cd backend
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env              # then fill in DATABASE_URL, COHERE_API_KEY, ELEVENLABS_API_KEY
+uvicorn main:app --reload
 ```
 
-2. **Install Dependencies**
+Tables are created automatically on first start. API docs: http://localhost:8000/docs
+
+### Frontend
 
 ```bash
+cd frontend
 npm install
-```
-
-3. **Set Environment Variable**
-
-Update the backend API base URL in `src/services/api.ts`:
-
-```ts
-const API_BASE_URL = 'https://swarsmriti.onrender.com'; // ✅ Set to deployed backend
-```
-
-4. **Run Locally**
-
-```bash
+cp .env.example .env.local        # points the app at http://localhost:8000
 npm run dev
 ```
 
-5. **Build for Production**
-
-```bash
-npm run build
-```
-
-6. **Deploy**
-
-* Push the frontend code to GitHub
-* Deploy static site via Render.com or Netlify
-* Set build command: `npm run build`
-* Set publish directory: `dist`
+> 🔐 Never commit `.env` files with real keys. They are git-ignored; on Render, set keys in the service's **Environment** tab.
 
 ---
 
-## 🢑 Team Roles
+## 🚀 Deploy (Render)
 
-| Name              | Role                              | Contributions                                     |
-| ----------------- | --------------------------------- | ------------------------------------------------- |
-| **Arpit Makkar**  | Backend Integration & Deployment  | FastAPI APIs, Vosk STT, ElevenLabs, ChromaDB      |
-| **Keshav Sharma** | Frontend Integration & Deployment | React UI, audio upload, API connectivity, hosting |
+| Service | Setting | Value |
+| --- | --- | --- |
+| Backend (web service) | Root directory | `backend` |
+| | Build command | `pip install -r requirements.txt` |
+| | Start command | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
+| | Environment | `DATABASE_URL`, `COHERE_API_KEY`, `ELEVENLABS_API_KEY` |
+| Frontend (static site) | Root directory | `frontend` |
+| | Build command | `npm ci && npm run build` |
+| | Publish directory | `dist` |
+| | Redirects/Rewrites | Source `/*` → Destination `/index.html`, Action **Rewrite** |
 
----
+The free backend sleeps after 15 minutes idle; the frontend shows "Waking server…" while it starts (about a minute).
 
-## 🧠 Memory Flow Diagram (Optional)
-
-```mermaid
-graph TD;
-A[User Uploads WAV] --> B[Transcribe with Vosk];
-B --> C[Store in ChromaDB];
-C --> D[Chat/Text Query];
-D --> E[Cohere Embedding + Search];
-E --> F[Generate Response + Voice];
-F --> G[Return Text + Audio URL];
-```
+**Live demo:** https://swarsmriti-1.onrender.com · **Demo video:** https://www.youtube.com/watch?v=xN1qYtvx7gQ
 
 ---
 
-## 📌 Resources & Acknowledgements
+## 👥 Team
 
-* [Vosk API](https://alphacephei.com/vosk/)
-* [Cohere](https://cohere.com/)
-* [ElevenLabs](https://www.elevenlabs.io/)
-* [Render Deployment](https://render.com/docs)
+| Name | Role | Contributions |
+| --- | --- | --- |
+| **Arpit Makkar** | Backend Integration & Deployment | FastAPI APIs, Vosk STT, ElevenLabs, memory store |
+| **Keshav Sharma** | Frontend Integration & Deployment | React UI, audio capture, API connectivity, hosting |
 
 ---
 
-## 📬 Feedback or Questions?
+## 📌 Acknowledgements
 
-Feel free to raise an issue or drop a message!
+[Vosk](https://alphacephei.com/vosk/) · [Cohere](https://cohere.com/) · [ElevenLabs](https://elevenlabs.io/) · [pgvector](https://github.com/pgvector/pgvector) · [Render](https://render.com/docs)
