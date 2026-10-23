@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 import config
 import db
 from errors import ServiceError
-from routes import chat_route, memories_route, profile_route, train_route, transcribe_route
+from routes import chat_route, memories_route, people_route, train_route, transcribe_route
 
 
 @asynccontextmanager
@@ -45,7 +45,7 @@ app.include_router(train_route.router)
 app.include_router(chat_route.router)
 app.include_router(memories_route.router)
 app.include_router(transcribe_route.router)
-app.include_router(profile_route.router)
+app.include_router(people_route.router)
 
 
 if __name__ == "__main__":

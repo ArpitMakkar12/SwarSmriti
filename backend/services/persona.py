@@ -16,9 +16,9 @@ from errors import ServiceError
 from services import cohere_client, elevenlabs_client
 
 
-def _system_prompt(profile: dict, memories: list[dict]) -> str:
-    name = profile["name"].strip() or "the person who trained you"
-    about = profile["about"].strip()
+def _system_prompt(person: dict, memories: list[dict]) -> str:
+    name = person["name"].strip() or "the person who trained you"
+    about = person["about"].strip()
 
     if memories:
         memory_lines = "\n".join(
@@ -44,13 +44,12 @@ About {name}:
 {memory_lines}"""
 
 
-def answer(question: str, history: list[dict]) -> dict:
-    profile = db.get_profile()
-
+def answer(person: dict, question: str, history: list[dict]) -> dict:
+    """person = a row from db.get_person (includes the private voice_id)."""
     query_vec = cohere_client.embed([question], "search_query")[0]
-    memories = db.search_memories(query_vec, config.MEMORIES_PER_ANSWER)
+    memories = db.search_memories(person["id"], query_vec, config.MEMORIES_PER_ANSWER)
 
-    messages = [{"role": "system", "content": _system_prompt(profile, memories)}]
+    messages = [{"role": "system", "content": _system_prompt(person, memories)}]
     for turn in history[-10:]:  # last few turns so the conversation flows
         if turn.get("role") in ("user", "assistant") and turn.get("content"):
             messages.append({"role": turn["role"], "content": str(turn["content"])[:2000]})
@@ -61,7 +60,7 @@ def answer(question: str, history: list[dict]) -> dict:
     # Voice is a bonus: if ElevenLabs fails (quota, plan, key) the text still arrives.
     audio_b64, audio_error = None, None
     try:
-        mp3 = elevenlabs_client.text_to_speech(reply, profile["voice_id"])
+        mp3 = elevenlabs_client.text_to_speech(reply, person["voice_id"])
         audio_b64 = base64.b64encode(mp3).decode("ascii")
     except ServiceError as e:
         audio_error = e.message

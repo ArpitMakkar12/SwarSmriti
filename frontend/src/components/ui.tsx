@@ -1,4 +1,6 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 
 /** The strip of sticky tape that holds a letter or keepsake to the page. Purely decorative. */
 export const Tape: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -33,7 +35,21 @@ export const InkDots: React.FC = () => (
 
 /** A clear, inline error note in the house style. */
 export const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p role="alert" className="rounded-lg border border-oxblood/30 bg-oxblood/5 px-4 py-3 text-sm text-oxblood-deep">
+  <p role="alert" className="px-4 py-3 text-sm border rounded-lg border-oxblood/30 bg-oxblood/5 text-oxblood-deep">
     {children}
   </p>
+);
+
+
+/** Shown on a page that needs a person when nobody has been added to the archive yet. */
+export const NeedsPerson: React.FC<{ what: string }> = ({ what }) => (
+  <div className="relative max-w-2xl pt-10 bg-card px-7 pb-7 shadow-letter animate-settle sm:px-10">
+    <Tape className="left-12" />
+    <span className="eyebrow">First, a person</span>
+    <p className="mt-2 text-3xl leading-snug font-display text-ink">Who are we remembering?</p>
+    <p className="mt-3 text-ink-soft">Add someone to the family archive before {what}.</p>
+    <Link to="/family" className="mt-6 btn-ink">
+      Add someone <ArrowRight className="w-4 h-4" />
+    </Link>
+  </div>
 );

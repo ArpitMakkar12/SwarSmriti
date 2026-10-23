@@ -1,5 +1,6 @@
 export interface Memory {
   id: string;
+  person_id: string;
   text: string;
   summary: string;
   tags: string[];
@@ -27,6 +28,7 @@ export interface HistoryTurn {
 }
 
 export interface TrainRequest {
+  person_id: string;
   text: string;
   tags: string[];
   source?: 'text' | 'voice';
@@ -43,10 +45,14 @@ export interface VoiceChatReply extends ChatReply {
   transcript: string;
 }
 
-export interface Profile {
+/** Someone being remembered. Each person has their own memories, portrait and voice. */
+export interface Person {
+  id: string;
   name: string;
   about: string;
   has_cloned_voice: boolean;
+  memory_count: number;
+  created_at: string;
 }
 
 export interface Activity {

@@ -3,7 +3,7 @@ import {
   ChatReply,
   HistoryTurn,
   Memory,
-  Profile,
+  Person,
   Stats,
   TrainRequest,
   VoiceChatReply,
@@ -56,31 +56,61 @@ class ApiService {
     return res.status !== 'error';
   }
 
+  // --- the family (everyone being remembered) ---
+  getPeople() {
+    return this.request<Person[]>('/people');
+  }
+
+  createPerson(name: string, about: string) {
+    return this.request<Person>('/people', { method: 'POST', body: JSON.stringify({ name, about }) });
+  }
+
+  updatePerson(personId: string, name: string, about: string) {
+    return this.request<Person>(`/people/${personId}`, { method: 'PUT', body: JSON.stringify({ name, about }) });
+  }
+
+  deletePerson(personId: string) {
+    return this.request<unknown>(`/people/${personId}`, { method: 'DELETE' });
+  }
+
+  cloneVoice(personId: string, samples: File[], consent: boolean) {
+    const form = new FormData();
+    samples.forEach((file) => form.append('files', file, file.name));
+    form.append('consent', String(consent));
+    return this.request<Person>(`/people/${personId}/voice`, { method: 'POST', body: form });
+  }
+
+  removeVoice(personId: string) {
+    return this.request<Person>(`/people/${personId}/voice`, { method: 'DELETE' });
+  }
+
+  // --- one person's memories, numbers and conversation ---
   trainMemory(data: TrainRequest) {
     return this.request<Memory>('/train', { method: 'POST', body: JSON.stringify(data) });
   }
 
-  getMemories() {
-    return this.request<Memory[]>('/memories');
+  getMemories(personId: string) {
+    return this.request<Memory[]>(`/memories?person_id=${encodeURIComponent(personId)}`);
   }
 
   deleteMemory(id: string) {
     return this.request<unknown>(`/memories/${id}`, { method: 'DELETE' });
   }
 
-  getStats() {
-    return this.request<Stats>('/stats');
+  getStats(personId: string) {
+    return this.request<Stats>(`/stats?person_id=${encodeURIComponent(personId)}`);
   }
 
-  chat(question: string, history: HistoryTurn[]) {
+  chat(personId: string, question: string, history: HistoryTurn[]) {
     return this.request<ChatReply>('/chat', {
       method: 'POST',
-      body: JSON.stringify({ question, history }),
+      body: JSON.stringify({ person_id: personId, question, history }),
     });
   }
 
-  voiceChat(wav: Blob, history: HistoryTurn[]) {
+  voiceChat(personId: string, wav: Blob, history: HistoryTurn[]) {
     const form = new FormData();
+    form.append('person_id', personId);
     form.append('audio', wav, 'voice.wav');
     form.append('history', JSON.stringify(history));
     return this.request<VoiceChatReply>('/voice-chat', { method: 'POST', body: form });
@@ -90,25 +120,6 @@ class ApiService {
     const form = new FormData();
     form.append('file', wav, 'memory.wav');
     return this.request<{ transcript: string }>('/transcribe', { method: 'POST', body: form });
-  }
-
-  getProfile() {
-    return this.request<Profile>('/profile');
-  }
-
-  updateProfile(name: string, about: string) {
-    return this.request<Profile>('/profile', { method: 'PUT', body: JSON.stringify({ name, about }) });
-  }
-
-  cloneVoice(samples: File[], consent: boolean) {
-    const form = new FormData();
-    samples.forEach((file) => form.append('files', file, file.name));
-    form.append('consent', String(consent));
-    return this.request<Profile>('/profile/voice', { method: 'POST', body: form });
-  }
-
-  removeVoice() {
-    return this.request<Profile>('/profile/voice', { method: 'DELETE' });
   }
 }
 

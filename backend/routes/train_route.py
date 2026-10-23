@@ -3,12 +3,14 @@ from pydantic import BaseModel
 
 import config
 import db
+from routes.people_route import require_person
 from services import cohere_client
 
 router = APIRouter()
 
 
 class TrainRequest(BaseModel):
+    person_id: str  # whose memory this is
     text: str
     tags: list[str] = []
     source: str = "text"  # "text" or "voice"
@@ -16,6 +18,7 @@ class TrainRequest(BaseModel):
 
 @router.post("/train")
 def train_memory(data: TrainRequest):
+    require_person(data.person_id)
     text = data.text.strip()
     if len(text) < config.MIN_MEMORY_CHARS:
         raise HTTPException(400, f"Please share at least {config.MIN_MEMORY_CHARS} characters.")
@@ -28,11 +31,12 @@ def train_memory(data: TrainRequest):
 
     embedding = cohere_client.embed([text], "search_document")[0]
     memory = db.add_memory(
+        person_id=data.person_id,
         text=text,
         summary=summary,
         tags=tags,
         source="voice" if data.source == "voice" else "text",
         embedding=embedding,
     )
-    db.log_activity("memory", summary)
+    db.log_activity(data.person_id, "memory", summary)
     return {"status": "success", "data": memory}
