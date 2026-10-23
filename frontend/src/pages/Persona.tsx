@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { UserRound, Upload, Trash2, Check, Mic, AudioLines } from 'lucide-react';
+import { Upload, X, Check } from 'lucide-react';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { PageHeader, Notice, Tape } from '../components/ui';
 import { apiService } from '../services/api';
 import { blobToWav } from '../utils/audio';
 import { Profile } from '../types';
@@ -13,11 +14,12 @@ const Persona: React.FC = () => {
   const [about, setAbout] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [samples, setSamples] = useState<File[]>([]);
   const [consent, setConsent] = useState(false);
   const [cloning, setCloning] = useState(false);
-  const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
     apiService.getProfile().then((res) => {
@@ -33,26 +35,25 @@ const Persona: React.FC = () => {
     e.preventDefault();
     setSaving(true);
     setSaved(false);
+    setSaveError(null);
     const res = await apiService.updateProfile(name, about);
     setSaving(false);
     if (res.status === 'success' && res.data) {
       setProfile(res.data);
       setSaved(true);
     } else {
-      alert(res.message || 'Could not save.');
+      setSaveError(res.message || 'Could not save the portrait.');
     }
   };
 
   const addFiles = (files: FileList | null) => {
-    if (!files) return;
-    setSamples((prev) => [...prev, ...Array.from(files)].slice(0, MAX_SAMPLES));
+    if (files) setSamples((prev) => [...prev, ...Array.from(files)].slice(0, MAX_SAMPLES));
   };
 
   const addRecording = async (blob: Blob) => {
-    // 44.1 kHz keeps more detail of the voice than the 16 kHz used for transcription.
+    // 44.1 kHz keeps more of the voice's character than the 16 kHz used for transcription.
     const wav = await blobToWav(blob, 44100);
-    const file = new File([wav], `recording-${samples.length + 1}.wav`, { type: 'audio/wav' });
-    setSamples((prev) => [...prev, file].slice(0, MAX_SAMPLES));
+    setSamples((prev) => [...prev, new File([wav], `recording-${prev.length + 1}.wav`, { type: 'audio/wav' })].slice(0, MAX_SAMPLES));
   };
 
   const createClone = async () => {
@@ -63,141 +64,147 @@ const Persona: React.FC = () => {
     if (res.status === 'success' && res.data) {
       setProfile(res.data);
       setSamples([]);
-      setMessage({ kind: 'ok', text: 'Voice created. Replies on the Talk page will now use this voice.' });
+      setMessage({ ok: true, text: 'The voice is ready. Every reply will now be spoken in it.' });
     } else {
-      setMessage({ kind: 'error', text: res.message || 'Voice cloning failed.' });
+      setMessage({ ok: false, text: res.message || 'The voice could not be created.' });
     }
   };
 
   const removeClone = async () => {
-    if (!confirm('Remove the cloned voice? Replies will go back to the default voice.')) return;
+    if (!confirm('Remove this voice? Replies will use a default voice again.')) return;
     const res = await apiService.removeVoice();
     if (res.status === 'success' && res.data) setProfile(res.data);
-    else alert(res.message || 'Could not remove the voice.');
+    else setMessage({ ok: false, text: res.message || 'Could not remove the voice.' });
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8 animate-fade-in">
-      <div className="text-center">
-        <div className="flex items-center justify-center mb-4 space-x-3">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-rose-gold to-copper-rose rounded-xl">
-            <UserRound className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-charcoal">Persona & Voice</h1>
-        </div>
-        <p className="max-w-2xl mx-auto text-lg text-warm-grey">
-          Who is this AI doppelganger? The name and description shape how it speaks; the voice is how it sounds.
-        </p>
-      </div>
+    <div className="flex flex-col gap-14">
+      <PageHeader
+        eyebrow="The portrait"
+        title="Who are we remembering?"
+        subtitle="Their name and the way they speak shape every reply. Their voice is how it sounds."
+      />
 
-      {/* Who */}
-      <form onSubmit={saveProfile} className="p-6 space-y-4 bg-white border rounded-xl border-warm-beige">
-        <div>
-          <label htmlFor="name" className="block mb-2 text-sm font-medium text-charcoal">Name</label>
+      {/* Who they are, written on a letter */}
+      <form onSubmit={saveProfile} className="relative flex max-w-3xl flex-col gap-8 bg-card px-7 pb-8 pt-10 shadow-letter sm:px-10">
+        <Tape className="left-12" />
+        <div className="flex flex-col gap-2">
+          <label htmlFor="name" className="eyebrow">
+            Their name
+          </label>
           <input
             id="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Kamala Sharma, or what the family calls them (Nani)"
+            placeholder="Kamala Sharma, or what the family calls them: Nani"
             maxLength={80}
-            className="w-full px-4 py-3 border rounded-lg border-warm-beige focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
+            className="border-b-[1.5px] border-ink bg-transparent py-2 font-display text-3xl text-ink outline-none placeholder:text-ink-muted/60 focus:border-oxblood"
           />
         </div>
-        <div>
-          <label htmlFor="about" className="block mb-2 text-sm font-medium text-charcoal">About them & how they talk</label>
+        <div className="flex flex-col gap-2">
+          <label htmlFor="about" className="eyebrow">
+            In a few words: who they are, how they talk
+          </label>
           <textarea
             id="about"
             value={about}
             onChange={(e) => setAbout(e.target.value)}
             maxLength={2000}
-            placeholder="e.g. Retired maths teacher from Kakinada, 78. Warm and teasing, calls everyone 'beta', mixes Telugu words into English, always asks if you've eaten."
-            className="w-full h-32 p-4 border rounded-lg resize-none border-warm-beige focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
+            rows={4}
+            placeholder="Retired maths teacher from Kakinada. Warm and teasing, calls everyone 'beta', mixes Telugu into English, always asks if you've eaten."
+            className="lined resize-none bg-transparent font-display text-lg leading-9 text-ink outline-none placeholder:italic placeholder:text-ink-muted/70"
           />
         </div>
-        <div className="flex items-center space-x-3">
-          <button
-            type="submit"
-            disabled={saving || !name.trim()}
-            className="px-6 py-3 font-medium text-white transition-all rounded-lg bg-gradient-to-r from-rose-gold to-copper-rose hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saving ? 'Saving…' : 'Save persona'}
+        <div className="flex flex-wrap items-center gap-4">
+          <button type="submit" disabled={saving || !name.trim()} className="btn-ink">
+            {saving ? 'Saving…' : 'Save the portrait'}
           </button>
           {saved && (
-            <span className="flex items-center text-sm text-green-700">
-              <Check className="w-4 h-4 mr-1" /> Saved
+            <span className="flex items-center gap-1.5 text-sm text-moss" role="status">
+              <Check className="h-4 w-4" /> Saved
             </span>
           )}
         </div>
+        {saveError && <Notice>{saveError}</Notice>}
       </form>
 
-      {/* Voice */}
-      <div className="p-6 space-y-5 bg-white border rounded-xl border-warm-beige">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="flex items-center text-lg font-semibold text-charcoal">
-              <AudioLines className="w-5 h-5 mr-2 text-copper-rose" /> Voice
+      {/* Their voice */}
+      <section className="flex max-w-3xl flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-ink pb-4">
+          <div className="flex flex-col gap-1">
+            <span className="eyebrow">Their voice</span>
+            <h2 className="font-display text-3xl text-ink">
+              {profile?.has_cloned_voice ? 'Speaking in their own voice' : 'Not yet their voice'}
             </h2>
-            <p className="mt-1 text-sm text-warm-grey">
-              {profile?.has_cloned_voice
-                ? 'Using the cloned voice for all replies.'
-                : 'Using a default voice. Add 1–5 clear recordings of the person (1–2 minutes total is enough) to clone their voice.'}
-            </p>
           </div>
           {profile?.has_cloned_voice && (
-            <button onClick={removeClone} className="flex items-center text-sm text-warm-grey hover:text-red-600">
-              <Trash2 className="w-4 h-4 mr-1" /> Remove
+            <button type="button" onClick={removeClone} className="text-sm text-ink-soft underline underline-offset-4 hover:text-oxblood">
+              Remove this voice
             </button>
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="flex flex-col items-center justify-center p-6 text-center transition-colors border-2 border-dashed rounded-lg cursor-pointer border-warm-beige hover:border-copper-rose/50 hover:bg-rose-gold/5">
-            <Upload className="w-6 h-6 mb-2 text-copper-rose" />
-            <span className="text-sm font-medium text-charcoal">Upload recordings</span>
-            <span className="text-xs text-warm-grey">Old voice notes, videos' audio, mp3 / wav / m4a</span>
-            <input type="file" accept="audio/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+        <p className="text-ink-soft">
+          Add 1–{MAX_SAMPLES} clear recordings of them speaking: old voice notes, the sound from a family video, or a new recording. One to
+          two minutes in total is enough.
+        </p>
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-sm border-[1.5px] border-dashed border-rule-strong px-6 py-10 text-center transition-colors hover:border-oxblood hover:bg-card">
+            <Upload className="h-6 w-6 text-oxblood" strokeWidth={1.6} />
+            <span className="font-display text-xl text-ink">Choose recordings</span>
+            <span className="text-xs text-ink-muted">mp3, wav, m4a and most audio files</span>
+            <input type="file" accept="audio/*" multiple className="sr-only" onChange={(e) => addFiles(e.target.files)} />
           </label>
-          <div className="flex flex-col items-center justify-center p-4 border rounded-lg border-warm-beige">
-            <span className="flex items-center mb-3 text-sm font-medium text-charcoal">
-              <Mic className="w-4 h-4 mr-1 text-copper-rose" /> Or record now
-            </span>
-            <VoiceRecorder onRecordingComplete={addRecording} disabled={cloning || samples.length >= MAX_SAMPLES} showPlayback={false} />
+          <div className="flex flex-col items-center justify-center gap-2 rounded-sm border border-rule px-6 py-8">
+            <VoiceRecorder
+              onRecordingComplete={addRecording}
+              disabled={cloning || samples.length >= MAX_SAMPLES}
+              showPlayback={false}
+              hint="Or record them speaking now"
+            />
           </div>
         </div>
 
         {samples.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="flex flex-wrap gap-3">
             {samples.map((file, i) => (
-              <li key={i} className="flex items-center justify-between px-3 py-2 text-sm rounded-lg bg-ivory">
-                <span className="truncate text-charcoal">{file.name}</span>
-                <button onClick={() => setSamples(samples.filter((_, j) => j !== i))} className="ml-3 text-warm-grey hover:text-red-600" aria-label="Remove sample">
-                  <Trash2 className="w-4 h-4" />
+              <li key={`${file.name}-${i}`} className="flex items-center gap-2 bg-card py-2 pl-4 pr-2 text-sm text-ink shadow-keepsake">
+                <span className="max-w-[16rem] truncate font-display italic">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setSamples(samples.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${file.name}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-muted hover:bg-paper hover:text-oxblood"
+                >
+                  <X className="h-4 w-4" />
                 </button>
               </li>
             ))}
           </ul>
         )}
 
-        <label className="flex items-start space-x-2 text-sm text-charcoal">
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
-          <span>This is my own voice, or I have permission from the person (or their family) to recreate it.</span>
+        <label className="flex items-start gap-3 text-sm text-ink">
+          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-4 w-4 accent-oxblood" />
+          <span>This is my own voice, or I have permission from the person or their family to recreate it.</span>
         </label>
 
-        <button
-          onClick={createClone}
-          disabled={cloning || samples.length === 0 || !consent}
-          className="w-full py-3 font-medium text-white transition-all rounded-lg bg-gradient-to-r from-rose-gold to-copper-rose hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {cloning ? 'Creating voice… (can take a minute)' : profile?.has_cloned_voice ? 'Replace cloned voice' : 'Create cloned voice'}
-        </button>
+        <div className="flex flex-wrap items-center gap-4">
+          <button type="button" onClick={createClone} disabled={cloning || samples.length === 0 || !consent} className="btn-seal">
+            {cloning ? 'Creating the voice… (about a minute)' : profile?.has_cloned_voice ? 'Replace the voice' : 'Create their voice'}
+          </button>
+          <span className="text-xs text-ink-muted">Uses ElevenLabs voice cloning (needs an ElevenLabs Starter plan or above).</span>
+        </div>
 
-        {message && (
-          <p className={`p-3 text-sm rounded-lg border ${message.kind === 'ok' ? 'text-green-800 bg-green-50 border-green-200' : 'text-red-700 bg-red-50 border-red-200'}`}>
-            {message.text}
-          </p>
-        )}
-        <p className="text-xs text-warm-grey">Voice cloning uses ElevenLabs and needs a paid ElevenLabs plan (Starter or above).</p>
-      </div>
+        {message &&
+          (message.ok ? (
+            <p role="status" className="font-display text-lg italic text-moss">
+              {message.text}
+            </p>
+          ) : (
+            <Notice>{message.text}</Notice>
+          ))}
+      </section>
     </div>
   );
 };

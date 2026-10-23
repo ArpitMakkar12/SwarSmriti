@@ -1,19 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Mic, Square, ArrowUp } from 'lucide-react';
 import ChatBubble from '../components/ChatBubble';
-import VoiceRecorder from '../components/VoiceRecorder';
+import { InkDots } from '../components/ui';
+import { useVoiceRecorder } from '../hooks/useVoiceRecorder';
 import { ChatMessage, ChatReply, HistoryTurn } from '../types';
 import { apiService } from '../services/api';
 import { base64ToAudioUrl, blobToWav } from '../utils/audio';
 
+const STARTERS = ['What was your childhood like?', 'What advice would you give me?', 'Tell me about our family.'];
+
 const Talk: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [inputText, setInputText] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [input, setInput] = useState(searchParams.get('ask') ?? '');
+  const [busy, setBusy] = useState(false);
   const [personaName, setPersonaName] = useState('');
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
 
   useEffect(() => {
     apiService.getProfile().then((res) => {
@@ -22,165 +28,153 @@ const Talk: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, busy]);
 
-  const addMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
-    // A counter, not Date.now(): two messages added in the same millisecond got the same key before.
-    const newMessage: ChatMessage = { ...message, id: String(nextId.current++), timestamp: new Date().toISOString() };
-    setMessages((prev) => [...prev, newMessage]);
-  };
+  const add = (m: Omit<ChatMessage, 'id' | 'timestamp'>) =>
+    setMessages((prev) => [...prev, { ...m, id: `m${nextId.current++}`, timestamp: new Date().toISOString() }]);
 
-  // The last few turns go to the server so the AI can follow the conversation.
+  // The last few turns go with each question so the conversation flows. Error notes are left out.
   const history = (): HistoryTurn[] =>
-    messages
-      .filter((m) => !m.content.startsWith('⚠️')) // don't send error notices
+    messagesRef.current
+      .filter((m) => !m.isError)
       .slice(-10)
       .map((m) => ({ role: m.type === 'user' ? 'user' : 'assistant', content: m.content }));
 
-  const addReply = (reply: ChatReply) => {
-    addMessage({
+  const addReply = (reply: ChatReply) =>
+    add({
       type: 'ai',
       content: reply.answer,
       audioUrl: reply.audio_base64 ? base64ToAudioUrl(reply.audio_base64) : undefined,
       audioError: reply.audio_error ?? undefined,
+      memories: reply.memories_used,
     });
-  };
 
-  const handleTextSubmit = async () => {
-    const question = inputText.trim();
-    if (!question || isLoading) return;
+  const ask = async (question: string) => {
+    const q = question.trim();
+    if (!q || busy) return;
     const past = history();
-    setInputText('');
-    addMessage({ type: 'user', content: question });
-
-    setIsLoading(true);
-    const res = await apiService.chat(question, past);
-    setIsLoading(false);
-
+    setInput('');
+    add({ type: 'user', content: q });
+    setBusy(true);
+    const res = await apiService.chat(q, past);
+    setBusy(false);
     if (res.status === 'success' && res.data) addReply(res.data);
-    else addMessage({ type: 'ai', content: `⚠️ ${res.message || 'Something went wrong. Please try again.'}` });
+    else add({ type: 'ai', isError: true, content: res.message || 'Something went wrong. Please try again.' });
   };
 
-  const handleVoiceComplete = async (audioBlob: Blob) => {
+  // Speaking: the mic lives right in the question bar. Tap to start, tap again to send.
+  const onRecorded = useCallback(async (blob: Blob) => {
     const past = history();
-    setIsLoading(true);
+    setBusy(true);
     try {
-      const wav = await blobToWav(audioBlob, 16000);
+      const wav = await blobToWav(blob, 16000);
       const res = await apiService.voiceChat(wav, past);
       if (res.status === 'success' && res.data) {
-        addMessage({ type: 'user', content: res.data.transcript });
+        add({ type: 'user', content: res.data.transcript });
         addReply(res.data);
       } else {
-        addMessage({ type: 'ai', content: `⚠️ ${res.message || "I couldn't process that voice message."}` });
+        add({ type: 'ai', isError: true, content: res.message || "That voice message couldn't be understood." });
       }
-    } catch (error) {
-      console.error('Voice chat error:', error);
-      addMessage({ type: 'ai', content: "⚠️ Your browser couldn't read that recording. Please try again." });
+    } catch {
+      add({ type: 'ai', isError: true, content: "Your browser couldn't read that recording. Please try again." });
     } finally {
-      setIsLoading(false);
+      setBusy(false);
     }
-  };
+    // history/add/addReply only use refs and state setters, so this stays stable
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleTextSubmit();
-    }
-  };
+  const { isRecording, recordingTime, startRecording, stopRecording, formatTime } = useVoiceRecorder({ onRecordingComplete: onRecorded });
 
-  const lastAiId = [...messages].reverse().find((m) => m.type === 'ai')?.id;
-  const who = personaName || 'your AI doppelganger';
+  const name = personaName || 'them';
+  const lastAiId = [...messages].reverse().find((m) => m.type === 'ai' && !m.isError)?.id;
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto animate-fade-in">
-      <div className="mb-6 text-center">
-        <h1 className="mb-2 text-3xl font-bold text-charcoal">{personaName ? `Talk to ${personaName}` : 'Talk to Your AI Doppelganger'}</h1>
-        <p className="text-warm-grey">Ask questions, share thoughts, or just chat. Replies come from the memories you've shared.</p>
-      </div>
+    <div className="flex min-h-[calc(100vh-7rem)] flex-col gap-10">
+      <header className="flex flex-col gap-2 animate-fade-in">
+        <span className="eyebrow">In conversation with</span>
+        <h1 className="font-display text-5xl font-normal leading-none text-ink sm:text-6xl">{personaName || 'Your loved one'}</h1>
+        <p className="text-ink-soft">Built from the memories you've shared, spoken in their voice.</p>
+      </header>
 
-      {/* Mode toggle */}
-      <div className="flex items-center justify-center mb-6 space-x-4">
-        {[
-          { voice: false, icon: Send, label: 'Text Chat' },
-          { voice: true, icon: Mic, label: 'Voice Chat' },
-        ].map(({ voice, icon: Icon, label }) => (
-          <button
-            key={label}
-            onClick={() => setIsVoiceMode(voice)}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all ${
-              isVoiceMode === voice ? 'bg-copper-rose text-white shadow-md' : 'bg-white text-warm-grey border border-warm-beige hover:bg-warm-beige/20'
-            }`}
-          >
-            <Icon className="w-4 h-4" />
-            <span>{label}</span>
-          </button>
+      <section aria-label="Conversation" aria-live="polite" className="flex max-w-3xl flex-1 flex-col gap-10">
+        {messages.length === 0 && !busy && (
+          <div className="flex flex-col gap-4 py-6 animate-fade-in">
+            <p className="font-display text-2xl italic text-ink-soft">Where would you like to begin?</p>
+            <div className="flex flex-wrap gap-3">
+              {STARTERS.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => ask(s)}
+                  className="border border-rule px-4 py-3 text-left font-display text-[15px] italic text-ink-soft transition-colors hover:border-oxblood hover:bg-card hover:text-ink"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((m) => (
+          <ChatBubble key={m.id} message={m} personaName={personaName} isLatest={m.id === lastAiId} />
         ))}
-      </div>
 
-      {/* Chat */}
-      <div className="flex flex-col flex-1 min-h-[420px] bg-white border rounded-xl border-warm-beige">
-        <div className="flex-1 p-4 overflow-y-auto sm:p-6">
-          {messages.length === 0 ? (
-            <div className="py-12 text-center">
-              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-rose-gold to-copper-rose">
-                <Mic className="w-8 h-8 text-white" />
-              </div>
-              <h3 className="mb-2 text-lg font-medium text-charcoal">Start a Conversation</h3>
-              <p className="text-warm-grey">
-                {isVoiceMode ? `Record a voice message to talk with ${who}` : `Type a message to talk with ${who}`}
-              </p>
-            </div>
+        {busy && (
+          <p className="flex items-center gap-3 font-display text-lg italic text-ink-soft">
+            <InkDots /> {personaName || 'They'} {messages.length && messages[messages.length - 1].type === 'user' ? 'is remembering…' : 'is listening…'}
+          </p>
+        )}
+        <div ref={endRef} />
+      </section>
+
+      {/* The question bar stays at the bottom of the screen */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          ask(input);
+        }}
+        className="sticky bottom-0 flex max-w-3xl items-center gap-3 bg-gradient-to-t from-paper from-70% to-transparent pb-6 pt-6"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-3 border-b-[1.5px] border-ink pb-2">
+          {isRecording ? (
+            <p className="flex-1 py-2 font-display text-xl italic text-oxblood" aria-live="polite">
+              Listening… {formatTime(recordingTime)} <span className="text-base text-ink-soft">tap the square to send</span>
+            </p>
           ) : (
-            messages.map((message) => (
-              <ChatBubble key={message.id} message={message} personaName={personaName} autoPlay={message.id === lastAiId} />
-            ))
-          )}
-
-          {isLoading && (
-            <div className="flex justify-start mb-4">
-              <div className="max-w-xs px-4 py-3 bg-white border rounded-bl-sm border-warm-beige rounded-2xl">
-                <div className="flex items-center space-x-2">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 rounded-full bg-copper-rose animate-bounce" />
-                    <div className="w-2 h-2 rounded-full bg-copper-rose animate-bounce" style={{ animationDelay: '0.1s' }} />
-                    <div className="w-2 h-2 rounded-full bg-copper-rose animate-bounce" style={{ animationDelay: '0.2s' }} />
-                  </div>
-                  <span className="text-sm text-warm-grey">{personaName || 'AI'} is thinking…</span>
-                </div>
-              </div>
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <div className="p-4 border-t border-warm-beige">
-          {isVoiceMode ? (
-            <VoiceRecorder onRecordingComplete={handleVoiceComplete} disabled={isLoading} showPlayback={false} />
-          ) : (
-            <div className="flex items-end space-x-3">
-              <textarea
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message here…"
-                className="flex-1 p-3 border rounded-lg resize-none border-warm-beige focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
-                rows={1}
-                style={{ minHeight: '44px', maxHeight: '120px' }}
-                disabled={isLoading}
+            <>
+              <label htmlFor="ask" className="sr-only">
+                Ask {name} something
+              </label>
+              <input
+                id="ask"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                disabled={busy}
+                placeholder={`Ask ${name} something…`}
+                className="min-w-0 flex-1 bg-transparent py-2 font-display text-xl italic text-ink outline-none placeholder:text-ink-muted/80"
               />
-              <button
-                onClick={handleTextSubmit}
-                disabled={isLoading || !inputText.trim()}
-                aria-label="Send"
-                className="flex items-center justify-center text-white transition-all rounded-lg w-11 h-11 bg-gradient-to-br from-rose-gold to-copper-rose hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Send className="w-5 h-5" />
-              </button>
-            </div>
+            </>
           )}
         </div>
-      </div>
+        <button
+          type="button"
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={busy}
+          aria-label={isRecording ? 'Stop and send voice message' : 'Ask by voice'}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-40 ${
+            isRecording ? 'bg-oxblood text-card animate-record-ring' : 'border-[1.5px] border-ink text-ink hover:bg-ink hover:text-paper'
+          }`}
+        >
+          {isRecording ? <Square className="h-4 w-4" fill="currentColor" /> : <Mic className="h-5 w-5" strokeWidth={1.7} />}
+        </button>
+        {!isRecording && (
+          <button type="submit" disabled={busy || !input.trim()} aria-label="Ask" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-ink text-paper transition-colors hover:bg-oxblood disabled:opacity-40">
+            <ArrowUp className="h-5 w-5" />
+          </button>
+        )}
+      </form>
     </div>
   );
 };

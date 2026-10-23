@@ -1,258 +1,252 @@
 import React, { useState } from 'react';
-import { Plus, Sparkles, Lightbulb, Heart, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Plus } from 'lucide-react';
 import VoiceRecorder from '../components/VoiceRecorder';
+import { PageHeader, Notice, Tape } from '../components/ui';
 import { apiService } from '../services/api';
 import { blobToWav } from '../utils/audio';
 import { MAX_MEMORY_CHARS, MIN_MEMORY_CHARS, SAMPLE_MEMORY_PROMPTS } from '../utils/constants';
 import { Memory } from '../types';
 
-const predefinedTags = ['childhood', 'family', 'values', 'achievements', 'relationships', 'hobbies', 'fears', 'dreams', 'advice', 'philosophy'];
+const suggestedLabels = ['childhood', 'family', 'values', 'achievements', 'relationships', 'hobbies', 'fears', 'dreams', 'advice', 'philosophy'];
 
 const Train: React.FC = () => {
-  const [isTextMode, setIsTextMode] = useState(true);
+  const [mode, setMode] = useState<'write' | 'speak'>('write');
   const [text, setText] = useState('');
-  const [transcribedText, setTranscribedText] = useState('');
+  const [spoken, setSpoken] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [saved, setSaved] = useState<Memory | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const current = (isTextMode ? text : transcribedText).trim();
+  const current = (mode === 'write' ? text : spoken).trim();
   const tooShort = current.length < MIN_MEMORY_CHARS;
   const tooLong = current.length > MAX_MEMORY_CHARS;
 
-  const handleAddTag = (tag: string) => {
+  const toggleTag = (tag: string) => {
     const clean = tag.trim().toLowerCase();
-    if (clean && !tags.includes(clean)) setTags([...tags, clean]);
-    setNewTag('');
+    if (!clean) return;
+    setTags((prev) => (prev.includes(clean) ? prev.filter((t) => t !== clean) : [...prev, clean]));
   };
 
-  const handleSubmit = async (e?: React.FormEvent) => {
+  const save = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (isLoading || tooShort || tooLong) return;
-
-    setIsLoading(true);
-    setSaved(null);
-    const res = await apiService.trainMemory({ text: current, tags, source: isTextMode ? 'text' : 'voice' });
-    setIsLoading(false);
-
+    if (saving || tooShort || tooLong) return;
+    setSaving(true);
+    setError(null);
+    const res = await apiService.trainMemory({ text: current, tags, source: mode === 'write' ? 'text' : 'voice' });
+    setSaving(false);
     if (res.status === 'success' && res.data) {
       setSaved(res.data);
       setText('');
-      setTranscribedText('');
+      setSpoken('');
       setTags([]);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      alert(res.message || 'Failed to train memory.');
+      setError(res.message || 'The memory could not be kept. Please try again.');
     }
   };
 
-  const handleVoiceComplete = async (audioBlob: Blob) => {
-    setIsTranscribing(true);
+  const onRecorded = async (blob: Blob) => {
+    setTranscribing(true);
+    setError(null);
     try {
-      const wav = await blobToWav(audioBlob, 16000); // the format the server's speech model needs
+      const wav = await blobToWav(blob, 16000); // the format the server's speech model understands
       const res = await apiService.transcribe(wav);
       if (res.status === 'success' && res.data) {
         const words = res.data.transcript;
-        if (!words) alert("I couldn't hear any words. Try again a little closer to the microphone.");
+        if (!words) setError("No words came through. Try again a little closer to the microphone.");
         // Each new recording is added to the end, so a long story can be told in parts.
-        else setTranscribedText((prev) => (prev ? `${prev} ${words}` : words));
+        else setSpoken((prev) => (prev ? `${prev} ${words}` : words));
       } else {
-        alert(res.message || 'Failed to transcribe audio.');
+        setError(res.message || 'The recording could not be turned into text.');
       }
-    } catch (error) {
-      console.error('Transcription failed:', error);
-      alert("Your browser couldn't read that recording. Please try again.");
+    } catch {
+      setError("Your browser couldn't read that recording. Please try again.");
     } finally {
-      setIsTranscribing(false);
+      setTranscribing(false);
     }
   };
 
-  const insertPrompt = (prompt: string) => {
-    setIsTextMode(true);
-    setText((prev) => (prev.trim() ? prev : `${prompt}\n\n`));
+  const startWithPrompt = (prompt: string) => {
+    setMode('write');
+    setText((prev) => (prev.trim() ? prev : `${prompt}\n`));
+    document.getElementById('memory')?.focus();
   };
 
-  const counter = (value: string) => (
-    <span className={`text-sm ${value.trim().length >= MIN_MEMORY_CHARS && value.trim().length <= MAX_MEMORY_CHARS ? 'text-green-600' : 'text-warm-grey'}`}>
-      {value.trim().length} / {MAX_MEMORY_CHARS} characters
-      {value.trim().length < MIN_MEMORY_CHARS && ` (minimum ${MIN_MEMORY_CHARS})`}
+  const counter = (
+    <span className={`text-sm ${!tooShort && !tooLong ? 'text-moss' : 'text-ink-muted'}`}>
+      {current.length} / {MAX_MEMORY_CHARS}
+      {tooShort && ` · at least ${MIN_MEMORY_CHARS} characters`}
     </span>
   );
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      <div className="text-center">
-        <div className="flex items-center justify-center mb-4 space-x-3">
-          <div className="flex items-center justify-center w-12 h-12 bg-gradient-to-br from-rose-gold to-copper-rose rounded-xl">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-charcoal">Train Your AI Memory</h1>
-        </div>
-        <p className="max-w-2xl mx-auto text-lg leading-relaxed text-warm-grey">
-          Share experiences, thoughts and memories. The more you share, the more authentic your AI becomes.
-        </p>
-      </div>
+    <div className="flex flex-col gap-12">
+      <PageHeader eyebrow="Add to the album" title="Tell me a story" subtitle="Small moments matter as much as big ones. Write it down, or just say it." />
 
       {saved && (
-        <div className="p-4 border border-green-200 rounded-lg bg-green-50 animate-slide-up">
-          <div className="flex items-start space-x-3">
-            <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center mt-0.5">
-              <Star className="w-4 h-4 text-green-600" />
-            </div>
-            <div>
-              <h3 className="mb-1 font-medium text-green-800">Memory saved!</h3>
-              <p className="text-sm leading-relaxed text-green-700">{saved.summary}</p>
-              {saved.tags.length > 0 && <p className="mt-1 text-xs text-green-700">Tags: {saved.tags.join(', ')}</p>}
-            </div>
+        <div className="relative max-w-3xl bg-card px-7 pb-6 pt-9 shadow-letter animate-settle sm:px-10">
+          <Tape className="left-12" />
+          <span className="eyebrow text-moss">Kept in the album</span>
+          <p className="mt-2 font-display text-2xl leading-snug text-ink">{saved.summary}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {saved.tags.map((t) => (
+              <span key={t} className="chip">
+                {t}
+              </span>
+            ))}
+            <Link to="/memories" className="ml-auto flex items-center gap-1 text-sm text-ink underline underline-offset-4 hover:text-oxblood">
+              See it in the album <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         </div>
       )}
 
-      <div className="flex items-center justify-center space-x-4">
-        {[true, false].map((textMode) => (
+      {/* Write / Speak */}
+      <div role="tablist" aria-label="How to add the memory" className="flex gap-8 border-b border-rule">
+        {(['write', 'speak'] as const).map((m) => (
           <button
-            key={String(textMode)}
-            onClick={() => setIsTextMode(textMode)}
-            className={`px-6 py-3 rounded-lg font-medium transition-all ${
-              isTextMode === textMode ? 'bg-copper-rose text-white shadow-md' : 'bg-white text-warm-grey border border-warm-beige hover:bg-warm-beige/20'
+            key={m}
+            role="tab"
+            type="button"
+            aria-selected={mode === m}
+            onClick={() => setMode(m)}
+            className={`-mb-px border-b-2 pb-3 font-display text-2xl transition-colors ${
+              mode === m ? 'border-oxblood text-ink' : 'border-transparent text-ink-muted hover:text-ink'
             }`}
           >
-            {textMode ? 'Text Input' : 'Voice Input'}
+            {m === 'write' ? 'Write it' : 'Say it'}
           </button>
         ))}
       </div>
 
-      <div className="p-6 bg-white border rounded-xl border-warm-beige">
-        <div className="flex items-center mb-4 space-x-2">
-          <Lightbulb className="w-5 h-5 text-copper-rose" />
-          <h2 className="text-lg font-semibold text-charcoal">Memory Prompts</h2>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {SAMPLE_MEMORY_PROMPTS.slice(0, 6).map((prompt) => (
-            <button
-              key={prompt}
-              type="button"
-              onClick={() => insertPrompt(prompt)}
-              className="p-3 text-sm text-left transition-all border rounded-lg bg-ivory/50 hover:bg-rose-gold/10 border-warm-beige/50 hover:border-rose-gold/20 text-charcoal"
-            >
-              {prompt}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="p-6 space-y-6 bg-white border rounded-xl border-warm-beige">
-        {isTextMode ? (
-          <div>
-            <label htmlFor="memory" className="block mb-2 text-sm font-medium text-charcoal">Share Your Memory</label>
-            <textarea
-              id="memory"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && handleSubmit()}
-              placeholder="Tell me about a meaningful experience, your values, relationships, or anything that defines who you are..."
-              className="w-full h-48 p-4 border rounded-lg resize-none border-warm-beige focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
-              disabled={isLoading}
-            />
-            <div className="flex items-center justify-between mt-2">
-              {counter(text)}
-              <span className="text-xs text-warm-grey">Press Ctrl+Enter to submit</span>
+      <form onSubmit={save} className="flex flex-col gap-10">
+        {mode === 'write' ? (
+          <>
+            <div className="flex flex-col gap-3">
+              <span className="eyebrow">Need a beginning?</span>
+              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+                {SAMPLE_MEMORY_PROMPTS.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => startWithPrompt(prompt)}
+                    className="w-52 shrink-0 border border-rule bg-paper px-4 py-4 text-left font-display text-[15px] italic leading-snug text-ink-soft transition-colors hover:border-oxblood hover:bg-card hover:text-ink"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div>
-            <label className="block mb-4 text-sm font-medium text-center text-charcoal">Record Your Memory</label>
-            <VoiceRecorder onRecordingComplete={handleVoiceComplete} disabled={isLoading || isTranscribing} />
-            {isTranscribing && <p className="mt-4 text-sm text-center text-warm-grey">Turning your words into text…</p>}
 
-            {transcribedText && (
-              <div className="mt-6">
-                <label htmlFor="transcript" className="block mb-2 text-sm font-medium text-charcoal">
-                  Transcription (fix any mistakes before saving; record again to add more)
+            <div className="relative max-w-3xl bg-card px-7 pb-6 pt-10 shadow-letter sm:px-10">
+              <Tape className="left-12" />
+              <label htmlFor="memory" className="sr-only">
+                The memory
+              </label>
+              <textarea
+                id="memory"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && e.ctrlKey && save()}
+                rows={9}
+                disabled={saving}
+                placeholder="It was the summer of…"
+                className="lined w-full resize-none bg-transparent font-display text-xl leading-9 text-ink outline-none placeholder:italic placeholder:text-ink-muted/70"
+              />
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                {counter}
+                <span className="text-xs text-ink-muted">Ctrl + Enter to keep it</span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex max-w-3xl flex-col gap-8">
+            <div className="flex flex-col items-center gap-2 py-6">
+              <VoiceRecorder onRecordingComplete={onRecorded} disabled={saving || transcribing} hint="Tap and tell it like you'd tell a friend" />
+              {transcribing && <p className="font-display italic text-ink-soft">Writing down your words…</p>}
+            </div>
+            {spoken && (
+              <div className="relative bg-card px-7 pb-6 pt-10 shadow-letter animate-settle sm:px-10">
+                <Tape className="left-12" />
+                <label htmlFor="spoken" className="eyebrow">
+                  What we heard. Fix anything that's wrong; record again to add more
                 </label>
                 <textarea
-                  id="transcript"
-                  value={transcribedText}
-                  onChange={(e) => setTranscribedText(e.target.value)}
-                  className="w-full h-40 p-4 border rounded-lg resize-none border-warm-beige bg-ivory/50 focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
+                  id="spoken"
+                  value={spoken}
+                  onChange={(e) => setSpoken(e.target.value)}
+                  rows={6}
+                  className="lined mt-3 w-full resize-none bg-transparent font-display text-xl leading-9 text-ink outline-none"
                 />
-                <div className="mt-2">{counter(transcribedText)}</div>
+                <div className="mt-3">{counter}</div>
               </div>
             )}
           </div>
         )}
 
-        {/* Tags */}
-        <div>
-          <label className="block mb-3 text-sm font-medium text-charcoal">Tags (optional, the AI also suggests some)</label>
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {tags.map((tag) => (
-                <span key={tag} className="inline-flex items-center px-3 py-1 text-sm border rounded-full bg-rose-gold/20 text-copper-rose border-rose-gold/30">
+        <div className="flex max-w-3xl flex-col gap-3">
+          <span className="eyebrow">Label it (optional, a few are added for you)</span>
+          <div className="flex flex-wrap gap-2">
+            {[...new Set([...suggestedLabels, ...tags])].map((tag) => {
+              const on = tags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleTag(tag)}
+                  className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${
+                    on ? 'border-ink bg-ink text-paper' : 'border-rule-strong text-ink-soft hover:border-ink hover:text-ink'
+                  }`}
+                >
                   {tag}
-                  <button type="button" onClick={() => setTags(tags.filter((t) => t !== tag))} className="ml-2 text-copper-rose/60 hover:text-copper-rose">
-                    ×
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {predefinedTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => handleAddTag(tag)}
-                disabled={tags.includes(tag)}
-                className={`px-3 py-1 text-sm rounded-full border transition-all ${
-                  tags.includes(tag)
-                    ? 'bg-warm-beige text-warm-grey border-warm-beige cursor-not-allowed'
-                    : 'bg-white text-warm-grey border-warm-beige hover:bg-rose-gold/10 hover:border-rose-gold/20 hover:text-copper-rose'
-                }`}
-              >
-                {tag}
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
-          <div className="flex space-x-2">
+          <div className="flex max-w-sm items-center gap-2 border-b border-rule-strong">
+            <label htmlFor="new-tag" className="sr-only">
+              Your own label
+            </label>
             <input
-              type="text"
+              id="new-tag"
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  handleAddTag(newTag);
+                  toggleTag(newTag);
+                  setNewTag('');
                 }
               }}
-              placeholder="Add custom tag..."
-              className="flex-1 px-3 py-2 text-sm border rounded-lg border-warm-beige focus:ring-2 focus:ring-copper-rose/20 focus:border-copper-rose"
+              placeholder="Your own label…"
+              className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-ink-muted"
             />
-            <button type="button" onClick={() => handleAddTag(newTag)} aria-label="Add tag" className="px-4 py-2 transition-colors rounded-lg bg-rose-gold/20 text-copper-rose hover:bg-rose-gold/30">
-              <Plus className="w-4 h-4" />
+            <button
+              type="button"
+              onClick={() => {
+                toggleTag(newTag);
+                setNewTag('');
+              }}
+              aria-label="Add label"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:text-oxblood"
+            >
+              <Plus className="h-4 w-4" />
             </button>
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={isLoading || tooShort || tooLong}
-          className="flex items-center justify-center w-full py-4 space-x-2 font-medium text-white transition-all rounded-lg bg-gradient-to-r from-rose-gold to-copper-rose hover:shadow-lg disabled:from-warm-beige disabled:to-warm-beige disabled:text-warm-grey disabled:cursor-not-allowed disabled:shadow-none"
-        >
-          {isLoading ? (
-            <>
-              <div className="w-5 h-5 border-2 rounded-full border-white/30 border-t-white animate-spin" />
-              <span>Saving memory…</span>
-            </>
-          ) : (
-            <>
-              <Heart className="w-5 h-5" />
-              <span>Train AI Memory</span>
-            </>
-          )}
-        </button>
+        {error && <Notice>{error}</Notice>}
+
+        <div>
+          <button type="submit" disabled={saving || tooShort || tooLong} className="btn-seal">
+            {saving ? 'Keeping it safe…' : 'Keep this memory'}
+          </button>
+        </div>
       </form>
     </div>
   );
